@@ -1,0 +1,8 @@
+{
+  "name": "Remix Aki Qubee",
+  "description": "Aki Qubee — Bilingual Afaan Oromo \u0026 English companion with Qubee alphabet phonetics, daily conversational phrases, and Mammaaksa proverbs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

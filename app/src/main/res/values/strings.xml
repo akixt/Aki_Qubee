@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Aki Qubee</string>
+    <string name="brand_logo_cd">Aki Qubee brand logo</string>
+    <string name="nav_home_om">Mammaaksa</string>
+    <string name="nav_home_en">Wisdom</string>
+    <string name="nav_qubee_om">Qubee</string>
+    <string name="nav_qubee_en">Alphabet</string>
+    <string name="nav_phrases_om">Haasawa</string>
+    <string name="nav_phrases_en">Phrases</string>
+    <string name="hero_banner_cd">Ethiopian highlands sunrise illustration</string>
+    <string name="language_toggle_cd">Switch app language between Afaan Oromo and English</string>
+    <string name="theme_toggle_cd">Switch between light and dark theme</string>
+    <string name="copy_success_om">Garagalfameera!</string>
+    <string name="copy_success_en">Copied to clipboard</string>
+</resources>
