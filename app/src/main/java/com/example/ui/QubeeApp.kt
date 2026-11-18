@@ -64,14 +64,21 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.example.R
 import com.example.data.AppLanguage
 import com.example.data.ProverbItem
 import kotlinx.coroutines.launch
 
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.FavoriteBorder
+
 const val ROUTE_HOME = "home"
 const val ROUTE_QUBEE = "qubee"
 const val ROUTE_PHRASES = "phrases"
+const val ROUTE_FAVORITES = "favorites"
 
 private data class NavDestination(
     val route: String,
@@ -106,6 +113,14 @@ private val destinations = listOf(
         selectedIcon = Icons.Filled.Forum,
         unselectedIcon = Icons.Outlined.Forum,
         testTag = "nav_phrases_tab"
+    ),
+    NavDestination(
+        route = ROUTE_FAVORITES,
+        labelOmRes = R.string.nav_favorites_om,
+        labelEnRes = R.string.nav_favorites_en,
+        selectedIcon = Icons.Filled.Favorite,
+        unselectedIcon = Icons.Outlined.FavoriteBorder,
+        testTag = "nav_favorites_tab"
     )
 )
 
@@ -115,14 +130,24 @@ fun QubeeApp(
     uiState: QubeeUiState,
     isDarkTheme: Boolean,
     onToggleLanguage: () -> Unit,
+    onSelectLanguage: (AppLanguage) -> Unit,
     onToggleTheme: () -> Unit,
+    onSelectThemeOverride: (Boolean?) -> Unit,
+    onSelectTtsSpeed: (Float) -> Unit,
+    onRandomProverb: () -> Unit,
     onNextProverb: () -> Unit,
-    onSelectProverb: (Int) -> Unit,
+    onSelectProverbById: (String) -> Unit,
+    onToggleFavoriteProverb: (String) -> Unit,
+    onToggleFavoritePhrase: (String) -> Unit,
+    onClearAllFavorites: () -> Unit,
+    onSearchProverbs: (String) -> Unit,
+    onSelectProverbCategory: (com.example.data.ProverbCategory?) -> Unit,
     onSelectQubeeFilter: (com.example.data.QubeeCategory?) -> Unit,
     onSelectLetter: (com.example.data.QubeeLetter) -> Unit,
     onSearchPhrases: (String) -> Unit,
     onSelectPhraseCategory: (com.example.data.PhraseCategory?) -> Unit,
-    onSpeakText: (String) -> Boolean
+    onSpeakText: (String) -> Boolean,
+    onRecordQuizAnswer: (Boolean) -> Unit = {}
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -132,6 +157,9 @@ fun QubeeApp(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val isOm = uiState.language == AppLanguage.OROMO
+    var showQubeeChartModal by remember { mutableStateOf(false) }
+    var showSettingsModal by remember { mutableStateOf(false) }
+    var showPracticeQuizModal by remember { mutableStateOf(false) }
 
     val copySuccessMessage = stringResource(
         if (isOm) R.string.copy_success_om else R.string.copy_success_en
@@ -228,13 +256,23 @@ fun QubeeApp(
                             onClick = onToggleLanguage,
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
-                                .padding(end = 8.dp)
                                 .minimumInteractiveComponentSize()
                                 .testTag("language_toggle_button")
                         ) {
                             Text(
                                 text = if (isOm) "OM ⇄ EN" else "EN ⇄ OM",
                                 style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        IconButton(
+                            onClick = { showSettingsModal = true },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = stringResource(id = R.string.settings_cd)
                             )
                         }
                     }
@@ -318,12 +356,29 @@ fun QubeeApp(
                         composable(ROUTE_HOME) {
                             HomeScreen(
                                 uiState = uiState,
+                                onRandomProverb = onRandomProverb,
                                 onNextProverb = onNextProverb,
-                                onSelectProverb = onSelectProverb,
+                                onSelectProverbById = onSelectProverbById,
+                                onToggleFavoriteProverb = onToggleFavoriteProverb,
+                                onToggleFavoritePhrase = onToggleFavoritePhrase,
+                                onProverbSearchChange = onSearchProverbs,
+                                onSelectProverbCategory = onSelectProverbCategory,
+                                onSpeakProverb = ::handleSpeak,
                                 onCopyText = ::copyToClipboard,
                                 onShareProverb = ::shareProverb,
                                 onNavigateToQubee = { navigateTo(ROUTE_QUBEE) },
-                                onNavigateToPhrases = { navigateTo(ROUTE_PHRASES) }
+                                onOpenQubeeChart = { showQubeeChartModal = true },
+                                onOpenPracticeQuiz = { showPracticeQuizModal = true },
+                                onNavigateToFavorites = { navigateTo(ROUTE_FAVORITES) },
+                                onBrowsePhraseCategory = { category ->
+                                    onSelectPhraseCategory(category)
+                                    navigateTo(ROUTE_PHRASES)
+                                },
+                                onNavigateToPhrases = {
+                                    onSelectPhraseCategory(null)
+                                    navigateTo(ROUTE_PHRASES)
+                                },
+                                onRecordQuizAnswer = onRecordQuizAnswer
                             )
                         }
                         composable(ROUTE_QUBEE) {
@@ -331,7 +386,8 @@ fun QubeeApp(
                                 uiState = uiState,
                                 onSelectFilter = onSelectQubeeFilter,
                                 onSelectLetter = onSelectLetter,
-                                onSpeakWord = ::handleSpeak
+                                onSpeakWord = ::handleSpeak,
+                                onOpenFullChart = { showQubeeChartModal = true }
                             )
                         }
                         composable(ROUTE_PHRASES) {
@@ -339,13 +395,68 @@ fun QubeeApp(
                                 uiState = uiState,
                                 onSearchChange = onSearchPhrases,
                                 onSelectCategory = onSelectPhraseCategory,
+                                onToggleFavoritePhrase = onToggleFavoritePhrase,
                                 onCopyPhrase = ::copyToClipboard,
                                 onSpeakPhrase = ::handleSpeak
+                            )
+                        }
+                        composable(ROUTE_FAVORITES) {
+                            FavoritesScreen(
+                                uiState = uiState,
+                                onToggleFavoriteProverb = onToggleFavoriteProverb,
+                                onToggleFavoritePhrase = onToggleFavoritePhrase,
+                                onSelectProverbInHome = { proverbId ->
+                                    onSelectProverbById(proverbId)
+                                    navigateTo(ROUTE_HOME)
+                                },
+                                onSpeakText = ::handleSpeak,
+                                onCopyText = ::copyToClipboard,
+                                onShareProverb = ::shareProverb,
+                                onExploreProverbs = { navigateTo(ROUTE_HOME) },
+                                onExplorePhrases = { navigateTo(ROUTE_PHRASES) }
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showQubeeChartModal) {
+        QubeeChartModal(
+            selectedLetter = uiState.selectedLetter,
+            isOm = isOm,
+            onLetterClick = { letter ->
+                onSelectLetter(letter)
+                handleSpeak(letter.ttsPronunciation)
+            },
+            onReplaySound = { letter ->
+                handleSpeak(letter.ttsPronunciation)
+            },
+            onDismiss = { showQubeeChartModal = false }
+        )
+    }
+
+    if (showSettingsModal) {
+        SettingsModal(
+            uiState = uiState,
+            onSelectLanguage = onSelectLanguage,
+            onSelectThemeOverride = onSelectThemeOverride,
+            onSelectTtsSpeed = onSelectTtsSpeed,
+            onClearFavorites = onClearAllFavorites,
+            onOpenQuiz = { showPracticeQuizModal = true },
+            onDismiss = { showSettingsModal = false }
+        )
+    }
+
+    if (showPracticeQuizModal) {
+        PracticeQuizModal(
+            isOm = isOm,
+            onSpeakText = ::handleSpeak,
+            onDismiss = { showPracticeQuizModal = false },
+            allPhrases = uiState.allPhrases,
+            quizProgress = uiState.quizProgress,
+            onRecordAnswer = onRecordQuizAnswer
+        )
     }
 }

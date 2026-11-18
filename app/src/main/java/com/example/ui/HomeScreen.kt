@@ -1,10 +1,5 @@
 package com.example.ui
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,30 +14,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Abc
 import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,28 +43,49 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.AppLanguage
-import com.example.data.OromoContent
+import com.example.data.ProverbCategory
 import com.example.data.ProverbItem
 import com.example.ui.theme.GoldAccent
+import kotlinx.coroutines.launch
 import java.util.Calendar
+
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material3.OutlinedButton
+import com.example.data.OromoContent
+import com.example.data.PhraseCategory
 
 @Composable
 fun HomeScreen(
     uiState: QubeeUiState,
+    onRandomProverb: () -> Unit,
     onNextProverb: () -> Unit,
-    onSelectProverb: (Int) -> Unit,
+    onSelectProverbById: (String) -> Unit,
+    onToggleFavoriteProverb: (String) -> Unit,
+    onToggleFavoritePhrase: (String) -> Unit,
+    onProverbSearchChange: (String) -> Unit,
+    onSelectProverbCategory: (ProverbCategory?) -> Unit,
+    onSpeakProverb: (String) -> Unit,
     onCopyText: (String) -> Unit,
     onShareProverb: (ProverbItem) -> Unit,
     onNavigateToQubee: () -> Unit,
+    onOpenQubeeChart: () -> Unit,
+    onOpenPracticeQuiz: () -> Unit,
+    onNavigateToFavorites: () -> Unit,
+    onBrowsePhraseCategory: (PhraseCategory) -> Unit,
     onNavigateToPhrases: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRecordQuizAnswer: (Boolean) -> Unit = {}
 ) {
     val isOm = uiState.language == AppLanguage.OROMO
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
     val greeting = remember(isOm) {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         when {
@@ -83,13 +95,19 @@ fun HomeScreen(
         }
     }
 
+    val filteredProverbs = uiState.filteredProverbs
+    val featured = uiState.featuredProverb
+
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        state = listState,
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("home_lazy_column"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Hero Editorial Banner
-        item {
+        item(key = "hero_banner") {
             Card(
                 shape = MaterialTheme.shapes.large,
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -161,9 +179,9 @@ fun HomeScreen(
                             )
                             Text(
                                 text = if (isOm) {
-                                    "Qubee, haasawa guyyaa fi mammaaksa Oromoo bakka tokkotti."
+                                    "Qubee, haasawa ${uiState.allPhrases.size}+ fi mammaaksa ${uiState.allProverbs.size}+ bakka tokkotti."
                                 } else {
-                                    "Explore the Qubee alphabet, daily phrases, and Oromo proverbs."
+                                    "Explore Qubee, ${uiState.allPhrases.size}+ daily phrases, and ${uiState.allProverbs.size}+ Oromo proverbs."
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color.White.copy(alpha = 0.9f)
@@ -174,250 +192,190 @@ fun HomeScreen(
             }
         }
 
-        // Featured Mammaaksa Card
-        item {
-            val proverb = uiState.featuredProverb
-            Card(
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Proverbs of the Day Card (random Mammaaksa + English translation)
+        item(key = "proverb_of_day") {
+            ProverbOfTheDayCard(
+                proverb = featured,
+                proverbNumber = uiState.featuredProverbIndex + 1,
+                totalCount = uiState.allProverbs.size,
+                isFavorite = featured.id in uiState.favoriteProverbIds,
+                isOm = isOm,
+                onToggleFavorite = { onToggleFavoriteProverb(featured.id) },
+                onRandomProverb = onRandomProverb,
+                onNextProverb = onNextProverb,
+                onSpeakProverb = onSpeakProverb,
+                onCopyProverb = onCopyText,
+                onShareProverb = onShareProverb
+            )
+        }
+
+        // Quick Exploration Shortcuts (Qubee Alphabet + Interactive TTS Chart)
+        item(key = "quick_shortcuts") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.FormatQuote,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = if (isOm) "Mammaaksa Guyyaa" else "Proverb Spotlight",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "${uiState.featuredProverbIndex + 1} / ${OromoContent.proverbs.size}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilledTonalIconButton(
-                                onClick = {
-                                    onCopyText("${proverb.oromo}\n— ${proverb.english}")
-                                },
-                                modifier = Modifier.testTag("copy_proverb_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.ContentCopy,
-                                    contentDescription = if (isOm) "Garagalchi" else "Copy proverb"
-                                )
-                            }
-                            FilledTonalIconButton(
-                                onClick = { onShareProverb(proverb) },
-                                modifier = Modifier.testTag("share_proverb_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Share,
-                                    contentDescription = if (isOm) "Qoodi" else "Share proverb"
-                                )
-                            }
-                        }
-                    }
-
-                    AnimatedContent(
-                        targetState = proverb,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
-                        label = "proverb_transition"
-                    ) { item ->
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "“${item.oromo}”",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = item.english,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontStyle = FontStyle.Italic,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                shape = MaterialTheme.shapes.small,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = if (isOm) item.meaningOm else item.meaningEn,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = onNextProverb,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        ),
-                        shape = RoundedCornerShape(12.dp),
+                    QuickModuleCard(
+                        title = if (isOm) "Qubee Baradhu" else "Learn Qubee",
+                        subtitle = if (isOm) "Qubee 33 & sagalee" else "33 letters & sounds",
+                        icon = Icons.Outlined.Abc,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        onClick = onNavigateToQubee,
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
+                            .testTag("quick_qubee_card")
+                    )
+                    QuickModuleCard(
+                        title = if (isOm) "Gabatee Qubee" else "Qubee Chart",
+                        subtitle = if (isOm) "Tuqii dhaggeeffadhu" else "Tap letters for TTS",
+                        icon = Icons.Filled.GridView,
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        onClick = onOpenQubeeChart,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("open_qubee_chart_button")
+                    )
+                }
+
+                val favCount = uiState.favoriteProverbIds.size + uiState.favoritePhraseIds.size
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onOpenPracticeQuiz,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
                             .height(48.dp)
-                            .testTag("next_proverb_button")
+                            .testTag("home_practice_quiz_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Refresh,
+                            imageVector = Icons.Filled.Quiz,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text(if (isOm) "Qormaata Guyyaa" else "Daily Quiz")
+                    }
+                    OutlinedButton(
+                        onClick = onNavigateToFavorites,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("home_favorites_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Favorite,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
                         Text(
-                            text = if (isOm) "Mammaaksa Biraa" else "Next Proverb",
-                            style = MaterialTheme.typography.labelLarge
+                            if (isOm) "Filatamoo ($favCount)" else "Favorites ($favCount)"
                         )
                     }
                 }
             }
         }
 
-        // Quick Exploration Shortcuts
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickModuleCard(
-                    title = if (isOm) "Qubee Baradhu" else "Learn Qubee",
-                    subtitle = if (isOm) "Qubee 33 & sagalee" else "33 letters & sounds",
-                    icon = Icons.Outlined.Abc,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    onClick = onNavigateToQubee,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_qubee_card")
-                )
-                QuickModuleCard(
-                    title = if (isOm) "Haasawa Guyyaa" else "Daily Phrases",
-                    subtitle = if (isOm) "Jechoota 24+" else "24+ key expressions",
-                    icon = Icons.Outlined.Forum,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    onClick = onNavigateToPhrases,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_phrases_card")
-                )
-            }
+        // Daily Quiz Interactive Multiple-Choice Progress Card
+        item(key = "daily_quiz_section") {
+            DailyQuizHomeCard(
+                isOm = isOm,
+                allPhrases = uiState.allPhrases,
+                quizProgress = uiState.quizProgress,
+                onSpeakText = onSpeakProverb,
+                onRecordAnswer = onRecordQuizAnswer,
+                onOpenFullQuiz = onOpenPracticeQuiz
+            )
         }
 
-        // Section Header for Archive
-        item {
-            Text(
-                text = if (isOm) "Kuusaa Mammaaksaa" else "All Oromo Proverbs",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
+        // Daily Phrases Interactive Contextual Section
+        item(key = "daily_phrases_section") {
+            DailyPhrasesHomeSection(
+                isOm = isOm,
+                favoritePhraseIds = uiState.favoritePhraseIds,
+                onToggleFavoritePhrase = onToggleFavoritePhrase,
+                onSpeakPhrase = onSpeakProverb,
+                onCopyPhrase = onCopyText,
+                onBrowseCategory = onBrowsePhraseCategory,
+                onBrowseAllPhrases = onNavigateToPhrases,
+                allPhrases = uiState.allPhrases
+            )
+        }
+
+        // Search and Category Filters for the 550+ Proverbs Library
+        item(key = "proverb_archive_controls") {
+            ProverbArchiveControls(
+                searchQuery = uiState.proverbSearchQuery,
+                selectedCategory = uiState.proverbFilter,
+                filteredCount = filteredProverbs.size,
+                totalCount = uiState.allProverbs.size,
+                isOm = isOm,
+                onSearchChange = onProverbSearchChange,
+                onSelectCategory = onSelectProverbCategory,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
 
-        itemsIndexed(OromoContent.proverbs, key = { _, item -> item.id }) { index, item ->
-            val isSelected = index == uiState.featuredProverbIndex
-            Card(
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    }
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-                    }
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelectProverb(index) }
-                    .testTag("proverb_item_${item.id}")
-            ) {
-                Row(
+        if (filteredProverbs.isEmpty()) {
+            item(key = "proverb_empty_state") {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
+                    Icon(
+                        imageVector = Icons.Outlined.SearchOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = if (isOm) "Mammaaksi barbaadde hin argamne." else "No matching proverbs found.",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (isOm) "Jecha biraa yaali ykn calaltuu haqi." else "Try another keyword or clear filters.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilledTonalButton(
+                        onClick = {
+                            onProverbSearchChange("")
+                            onSelectProverbCategory(null)
                         },
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "${index + 1}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            text = item.oromo,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = item.english,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(if (isOm) "Hunda Agarsiisi" else "Show All Proverbs")
                     }
                 }
+            }
+        } else {
+            itemsIndexed(filteredProverbs, key = { _, item -> item.id }) { index, item ->
+                ProverbArchiveItemCard(
+                    item = item,
+                    displayIndex = index + 1,
+                    isSelected = item.id == featured.id,
+                    isFavorite = item.id in uiState.favoriteProverbIds,
+                    isOm = isOm,
+                    onToggleFavorite = { onToggleFavoriteProverb(item.id) },
+                    onClick = {
+                        onSelectProverbById(item.id)
+                        scope.launch {
+                            listState.animateScrollToItem(1)
+                        }
+                    }
+                )
             }
         }
     }

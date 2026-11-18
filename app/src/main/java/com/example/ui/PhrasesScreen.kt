@@ -39,11 +39,16 @@ import androidx.compose.ui.unit.dp
 import com.example.data.AppLanguage
 import com.example.data.PhraseCategory
 
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.IconButtonDefaults
+
 @Composable
 fun PhrasesScreen(
     uiState: QubeeUiState,
     onSearchChange: (String) -> Unit,
     onSelectCategory: (PhraseCategory?) -> Unit,
+    onToggleFavoritePhrase: (String) -> Unit,
     onCopyPhrase: (String) -> Unit,
     onSpeakPhrase: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -82,12 +87,24 @@ fun PhrasesScreen(
             placeholder = {
                 Text(
                     text = if (isOm) {
-                        "Jechoota Afaan Oromoo ykn Ingiliffaan barbaadi..."
+                        "Gita ykn jechoota barbaadi (fkn. Gabaa, Imala, Buna)..."
                     } else {
-                        "Search phrases in Oromo or English..."
+                        "Search categories or phrases (e.g. Market, Travel, Coffee)..."
                     }
                 )
             },
+            supportingText = if (uiState.phraseSearchQuery.isNotBlank() || uiState.phraseFilter != null) {
+                {
+                    val total = uiState.allPhrases.size
+                    Text(
+                        text = if (isOm) {
+                            "Bu'aa: ${uiState.filteredPhrases.size} / $total"
+                        } else {
+                            "Showing ${uiState.filteredPhrases.size} of $total phrases"
+                        }
+                    )
+                }
+            } else null,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("phrase_search_input")
@@ -102,14 +119,18 @@ fun PhrasesScreen(
             FilterChip(
                 selected = uiState.phraseFilter == null,
                 onClick = { onSelectCategory(null) },
-                label = { Text(if (isOm) "Hunda" else "All") },
+                label = {
+                    val count = uiState.allPhrases.size
+                    Text(if (isOm) "Hunda ($count)" else "All ($count)")
+                },
                 modifier = Modifier.testTag("phrase_filter_all")
             )
             PhraseCategory.entries.forEach { category ->
+                val count = uiState.allPhrases.count { it.category == category }
                 FilterChip(
                     selected = uiState.phraseFilter == category,
                     onClick = { onSelectCategory(category) },
-                    label = { Text(categoryLabel(category, isOm)) },
+                    label = { Text("${phraseCategoryLabel(category, isOm)} ($count)") },
                     modifier = Modifier.testTag("phrase_filter_${category.name.lowercase()}")
                 )
             }
@@ -176,14 +197,36 @@ fun PhrasesScreen(
                                     shape = MaterialTheme.shapes.small
                                 ) {
                                     Text(
-                                        text = categoryLabel(phrase.category, isOm),
+                                        text = phraseCategoryLabel(phrase.category, isOm),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val isFavorite = phrase.id in uiState.favoritePhraseIds
+                                    FilledTonalIconButton(
+                                        onClick = { onToggleFavoritePhrase(phrase.id) },
+                                        colors = if (isFavorite) {
+                                            IconButtonDefaults.filledTonalIconButtonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.secondary
+                                            )
+                                        } else {
+                                            IconButtonDefaults.filledTonalIconButtonColors()
+                                        },
+                                        modifier = Modifier.testTag("favorite_phrase_${phrase.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = if (isOm) {
+                                                if (isFavorite) "Filatamoo keessaa haqi" else "Filatamootti dabali"
+                                            } else {
+                                                if (isFavorite) "Remove from favorites" else "Bookmark phrase"
+                                            }
+                                        )
+                                    }
                                     FilledTonalIconButton(
                                         onClick = { onSpeakPhrase(phrase.oromo) },
                                         modifier = Modifier.testTag("speak_phrase_${phrase.id}")
@@ -229,15 +272,5 @@ fun PhrasesScreen(
                 }
             }
         }
-    }
-}
-
-private fun categoryLabel(category: PhraseCategory, isOm: Boolean): String {
-    return when (category) {
-        PhraseCategory.GREETINGS -> if (isOm) "Nagaa" else "Greetings"
-        PhraseCategory.ESSENTIALS -> if (isOm) "Barbaachisoo" else "Essentials"
-        PhraseCategory.TRAVEL -> if (isOm) "Imala" else "Travel"
-        PhraseCategory.MARKET -> if (isOm) "Gabaa" else "Market"
-        PhraseCategory.FOOD -> if (isOm) "Nyaata" else "Food"
     }
 }

@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,12 +41,17 @@ import com.example.data.AppLanguage
 import com.example.data.QubeeCategory
 import com.example.data.QubeeLetter
 
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material3.OutlinedButton
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QubeeAlphabetScreen(
     uiState: QubeeUiState,
     onSelectFilter: (QubeeCategory?) -> Unit,
     onSelectLetter: (QubeeLetter) -> Unit,
     onSpeakWord: (String) -> Unit,
+    onOpenFullChart: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isOm = uiState.language == AppLanguage.OROMO
@@ -113,19 +120,39 @@ fun QubeeAlphabetScreen(
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    FilledTonalButton(
-                        onClick = { onSpeakWord(selected.exampleWord) },
-                        modifier = Modifier
-                            .height(48.dp)
-                            .testTag("speak_qubee_button")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = if (isOm) "Dhaggeeffadhu" else "Listen")
+                        FilledTonalButton(
+                            onClick = { onSpeakWord(selected.ttsPronunciation) },
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("speak_qubee_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = if (isOm) "Dhaggeeffadhu" else "Listen")
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenFullChart,
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("open_full_chart_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GridView,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = if (isOm) "Gabatee Guutuu" else "Full Chart")
+                        }
                     }
                 }
             }
@@ -193,7 +220,10 @@ fun QubeeAlphabetScreen(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelectLetter(letter) }
+                        .clickable {
+                            onSelectLetter(letter)
+                            onSpeakWord(letter.ttsPronunciation)
+                        }
                         .testTag("qubee_tile_${letter.name.lowercase()}")
                 ) {
                     Column(
@@ -203,16 +233,27 @@ fun QubeeAlphabetScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = letter.symbol,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                            textAlign = TextAlign.Center
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = letter.symbol,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                                textAlign = TextAlign.Center
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = "Pronounce ${letter.name}",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                         Text(
                             text = letter.exampleWord,
                             style = MaterialTheme.typography.labelMedium,

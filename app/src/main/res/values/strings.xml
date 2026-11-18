@@ -7,9 +7,12 @@
     <string name="nav_qubee_en">Alphabet</string>
     <string name="nav_phrases_om">Haasawa</string>
     <string name="nav_phrases_en">Phrases</string>
+    <string name="nav_favorites_om">Filatamoo</string>
+    <string name="nav_favorites_en">Favorites</string>
     <string name="hero_banner_cd">Ethiopian highlands sunrise illustration</string>
     <string name="language_toggle_cd">Switch app language between Afaan Oromo and English</string>
     <string name="theme_toggle_cd">Switch between light and dark theme</string>
+    <string name="settings_cd">Open settings and developer information</string>
     <string name="copy_success_om">Garagalfameera!</string>
     <string name="copy_success_en">Copied to clipboard</string>
 </resources>

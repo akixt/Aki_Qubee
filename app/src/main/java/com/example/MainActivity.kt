@@ -35,14 +35,26 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     uiState = uiState,
                     isDarkTheme = isDarkTheme,
                     onToggleLanguage = viewModel::toggleLanguage,
+                    onSelectLanguage = viewModel::setLanguage,
                     onToggleTheme = { viewModel.toggleDarkTheme(isDarkTheme) },
+                    onSelectThemeOverride = viewModel::setDarkThemeOverride,
+                    onSelectTtsSpeed = viewModel::setTtsSpeed,
+                    onRandomProverb = viewModel::randomProverb,
                     onNextProverb = viewModel::nextProverb,
-                    onSelectProverb = viewModel::selectProverb,
+                    onSelectProverbById = viewModel::selectProverbById,
+                    onToggleFavoriteProverb = viewModel::toggleFavoriteProverb,
+                    onToggleFavoritePhrase = viewModel::toggleFavoritePhrase,
+                    onClearAllFavorites = viewModel::clearAllFavorites,
+                    onSearchProverbs = viewModel::updateProverbSearch,
+                    onSelectProverbCategory = viewModel::setProverbFilter,
                     onSelectQubeeFilter = viewModel::setQubeeFilter,
                     onSelectLetter = viewModel::selectLetter,
                     onSearchPhrases = viewModel::updatePhraseSearch,
                     onSelectPhraseCategory = viewModel::setPhraseFilter,
-                    onSpeakText = ::speakOut
+                    onSpeakText = { text -> speakOut(text, uiState.ttsSpeed) },
+                    onRecordQuizAnswer = { isCorrect ->
+                        viewModel.recordQuizAnswer(isCorrect, markDailyCompleted = true)
+                    }
                 )
             }
         }
@@ -62,9 +74,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun speakOut(text: String): Boolean {
+    private fun speakOut(text: String, speechRate: Float = 0.88f): Boolean {
         val engine = tts ?: return false
         if (!ttsReady) return false
+        engine.setSpeechRate(speechRate)
         engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, text.hashCode().toString())
         return true
     }
