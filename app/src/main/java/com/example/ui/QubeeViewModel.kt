@@ -34,6 +34,8 @@ import com.example.firebase.PronunciationComparisonResult
 import com.example.notifications.DailyReminderScheduler
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -264,6 +266,8 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val localState = MutableStateFlow(LocalFilterState())
     private val liveAiCloudState = MutableStateFlow(LiveAiCloudState())
+    private var cloudListenerJob: Job? = null
+    private var autoSyncJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -282,13 +286,86 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        cloudSyncRepo?.currentUser?.let { user ->
-            liveAiCloudState.value = liveAiCloudState.value.copy(
-                cloudSyncState = CloudSyncUiState(
-                    isSignedIn = true,
-                    displayName = user.displayName,
-                    email = user.email
-                )
+        cloudSyncRepo?.let { repo ->
+            viewModelScope.launch {
+                repo.authStateFlow().collect { user ->
+                    if (user != null && user.uid.isNotBlank()) {
+                        liveAiCloudState.value = liveAiCloudState.value.copy(
+                            cloudSyncState = liveAiCloudState.value.cloudSyncState.copy(
+                                isSignedIn = true,
+                                displayName = user.displayName,
+                                email = user.email
+                            )
+                        )
+                        startCloudListeners(repo, user.uid)
+                    } else {
+                        cloudListenerJob?.cancel()
+                        cloudListenerJob = null
+                        liveAiCloudState.value = liveAiCloudState.value.copy(
+                            cloudSyncState = liveAiCloudState.value.cloudSyncState.copy(
+                                isSignedIn = false,
+                                displayName = null,
+                                email = null,
+                                isSyncing = false
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startCloudListeners(repo: CloudSyncRepository, userId: String) {
+        cloudListenerJob?.cancel()
+        cloudListenerJob = viewModelScope.launch {
+            launch {
+                repo.observeCloudProfile(userId).collect { profile ->
+                    if (profile != null) {
+                        learningRepo.mergeCloudProgressIfHigher(
+                            totalPoints = profile.totalPoints.toInt(),
+                            bestStreak = profile.bestStreak.toInt(),
+                            totalLearningSeconds = profile.totalLearningSeconds,
+                            unlockedIds = profile.unlockedAchievementIds,
+                            todayPoints = profile.todayPoints.toInt(),
+                            currentStreak = profile.currentStreak.toInt(),
+                            lastActiveDate = profile.lastActiveDate
+                        )
+                    }
+                }
+            }
+            launch {
+                repo.observeCloudFavorites(userId).collect { favItems ->
+                    if (favItems.isNotEmpty()) {
+                        prefsRepo.restoreFavoritesFromCloud(
+                            proverbs = favItems.filter { it.itemType == "PROVERB" }.map { it.itemId }.toSet(),
+                            phrases = favItems.filter { it.itemType == "PHRASE" }.map { it.itemId }.toSet(),
+                            vocab = favItems.filter { it.itemType == "VOCAB" }.map { it.itemId }.toSet()
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun scheduleAutoCloudSync() {
+        val repo = cloudSyncRepo ?: return
+        if (repo.currentUser == null) return
+        autoSyncJob?.cancel()
+        autoSyncJob = viewModelScope.launch {
+            delay(1_200L)
+            val state = uiState.value
+            repo.syncUserProfile(
+                displayName = state.cloudSyncState.displayName ?: "Aki Learner",
+                totalPoints = state.userProgress.totalPoints,
+                dailyGoalPoints = state.dailyGoalPoints,
+                todayPoints = state.userProgress.todayPoints,
+                currentStreak = state.userProgress.currentStreakDays,
+                bestStreak = state.userProgress.bestStreakDays,
+                totalLearningSeconds = state.userProgress.totalLearningSeconds,
+                quizTotalAnswered = state.quizProgress.totalAnswered,
+                quizTotalCorrect = state.quizProgress.totalCorrect,
+                lastActiveDate = state.userProgress.lastActiveDate,
+                unlockedAchievementIds = state.unlockedAchievementIds.toList()
             )
         }
     }
@@ -911,17 +988,38 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
                             totalPoints = profile.totalPoints.toInt(),
                             bestStreak = profile.bestStreak.toInt(),
                             totalLearningSeconds = profile.totalLearningSeconds,
-                            unlockedIds = profile.unlockedAchievementIds
+                            unlockedIds = profile.unlockedAchievementIds,
+                            todayPoints = profile.todayPoints.toInt(),
+                            currentStreak = profile.currentStreak.toInt(),
+                            lastActiveDate = profile.lastActiveDate
                         )
                     }
                 }
+                val stateAfterMerge = uiState.value
+                syncRepo.syncUserProfile(
+                    displayName = user.displayName ?: stateAfterMerge.cloudSyncState.displayName ?: "Aki Learner",
+                    totalPoints = stateAfterMerge.userProgress.totalPoints,
+                    dailyGoalPoints = stateAfterMerge.dailyGoalPoints,
+                    todayPoints = stateAfterMerge.userProgress.todayPoints,
+                    currentStreak = stateAfterMerge.userProgress.currentStreakDays,
+                    bestStreak = stateAfterMerge.userProgress.bestStreakDays,
+                    totalLearningSeconds = stateAfterMerge.userProgress.totalLearningSeconds,
+                    quizTotalAnswered = stateAfterMerge.quizProgress.totalAnswered,
+                    quizTotalCorrect = stateAfterMerge.quizProgress.totalCorrect,
+                    lastActiveDate = stateAfterMerge.userProgress.lastActiveDate,
+                    unlockedAchievementIds = stateAfterMerge.unlockedAchievementIds.toList()
+                )
+                stateAfterMerge.favoriteProverbIds.forEach { syncRepo.syncFavorite("PROVERB", it, true) }
+                stateAfterMerge.favoritePhraseIds.forEach { syncRepo.syncFavorite("PHRASE", it, true) }
+                stateAfterMerge.favoriteVocabIds.forEach { syncRepo.syncFavorite("VOCAB", it, true) }
+
                 liveAiCloudState.value = liveAiCloudState.value.copy(
                     cloudSyncState = CloudSyncUiState(
                         isSignedIn = true,
                         displayName = user.displayName,
                         email = user.email,
                         isSyncing = false,
-                        statusMessage = "Signed in & cloud backup synced!"
+                        statusMessage = "Signed in & synced Room database with Firebase!"
                     )
                 )
             }.onFailure { err ->
@@ -955,9 +1053,9 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
                 lastActiveDate = state.userProgress.lastActiveDate,
                 unlockedAchievementIds = state.unlockedAchievementIds.toList()
             )
-            state.favoriteProverbIds.take(40).forEach { syncRepo.syncFavorite("PROVERB", it, true) }
-            state.favoritePhraseIds.take(40).forEach { syncRepo.syncFavorite("PHRASE", it, true) }
-            state.favoriteVocabIds.take(40).forEach { syncRepo.syncFavorite("VOCAB", it, true) }
+            state.favoriteProverbIds.forEach { syncRepo.syncFavorite("PROVERB", it, true) }
+            state.favoritePhraseIds.forEach { syncRepo.syncFavorite("PHRASE", it, true) }
+            state.favoriteVocabIds.forEach { syncRepo.syncFavorite("VOCAB", it, true) }
 
             val msg = if (profileResult.isSuccess) {
                 "Cloud backup synced successfully."
@@ -1001,9 +1099,14 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun emitPointsFeedback(msg: String?) {
         liveAiCloudState.value = liveAiCloudState.value.copy(lastPointsToastMessage = msg)
+        if (msg != null) {
+            scheduleAutoCloudSync()
+        }
     }
 
     override fun onCleared() {
+        cloudListenerJob?.cancel()
+        autoSyncJob?.cancel()
         audioManager?.release()
         super.onCleared()
     }

@@ -272,14 +272,31 @@ class LearningRepository(
         totalPoints: Int,
         bestStreak: Int,
         totalLearningSeconds: Long,
-        unlockedIds: List<String>
+        unlockedIds: List<String>,
+        todayPoints: Int = 0,
+        currentStreak: Int = 0,
+        lastActiveDate: String = ""
     ) {
         val current = dao.getUserProgressOnce() ?: UserProgressEntity()
+        val today = todayKey()
+        val mergedLastDate = if (lastActiveDate == today || current.lastActiveDate == today) today else {
+            maxOf(current.lastActiveDate, lastActiveDate)
+        }
+        val mergedToday = if (lastActiveDate == today && current.lastActiveDate == today) {
+            maxOf(current.todayPoints, todayPoints)
+        } else if (lastActiveDate == today) {
+            todayPoints
+        } else {
+            current.todayPoints
+        }
         dao.upsertUserProgress(
             current.copy(
                 totalPoints = maxOf(current.totalPoints, totalPoints),
+                todayPoints = mergedToday,
+                currentStreakDays = maxOf(current.currentStreakDays, currentStreak),
                 bestStreakDays = maxOf(current.bestStreakDays, bestStreak),
-                totalLearningSeconds = maxOf(current.totalLearningSeconds, totalLearningSeconds)
+                totalLearningSeconds = maxOf(current.totalLearningSeconds, totalLearningSeconds),
+                lastActiveDate = mergedLastDate
             )
         )
         unlockedIds.forEach { id ->

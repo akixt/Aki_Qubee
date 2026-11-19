@@ -7,6 +7,8 @@ import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -42,13 +44,17 @@ enum class OperationType(val value: String) {
     WRITE("write"),
 }
 
-fun handleFirestoreError(exception: Throwable, operationType: OperationType, path: String?): String {
+fun handleFirestoreError(
+    exception: Throwable,
+    operationType: OperationType,
+    path: String?,
+    auth: FirebaseAuth = Firebase.auth
+): String {
     val causes = generateSequence(exception) { it.cause }
     val rootError = causes.firstOrNull { it is FirebaseFirestoreException }
         ?: causes.firstOrNull { it !is CancellationException }
         ?: exception
 
-    val auth = FirebaseAuth.getInstance()
     val currentUser = auth.currentUser
 
     val providerInfoList = currentUser?.providerData?.map { provider ->
@@ -169,7 +175,9 @@ class CloudSyncRepository(
 
         val result = try {
             credentialManager.getCredential(activityContext, request)
-        } catch (primaryEx: Exception) {
+        } catch (cancelEx: GetCredentialCancellationException) {
+            throw cancelEx
+        } catch (primaryEx: NoCredentialException) {
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
                 .setServerClientId(serverClientId)
@@ -192,11 +200,54 @@ class CloudSyncRepository(
         } else {
             error("Unsupported credential returned by Credential Manager.")
         }
+    } catch (e: GetCredentialCancellationException) {
+        Log.w(TAG, "Google Sign-In cancelled by user or credential configuration.", e)
+        Result.failure(Exception("Sign-in was cancelled. Select a Google account to continue.", e))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Log.w(TAG, "Google Sign-In failed: ${e.message}", e)
         Result.failure(e)
+    }
+
+    fun observeCloudProfile(userId: String): Flow<CloudUserProfile?> = callbackFlow {
+        if (userId.isBlank() || auth.currentUser?.uid != userId) {
+            close()
+            return@callbackFlow
+        }
+        val docRef = db.collection("users").document(userId)
+        val registration = docRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                handleFirestoreError(error, OperationType.GET, docRef.path, auth)
+                return@addSnapshotListener
+            }
+            val profile = snapshot?.toObject(
+                CloudUserProfile::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+            trySend(profile)
+        }
+        awaitClose { registration.remove() }
+    }
+
+    fun observeCloudFavorites(userId: String): Flow<List<CloudFavoriteItem>> = callbackFlow {
+        if (userId.isBlank() || auth.currentUser?.uid != userId) {
+            close()
+            return@callbackFlow
+        }
+        val colRef = db.collection("users").document(userId).collection("favorites")
+        val registration = colRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                handleFirestoreError(error, OperationType.LIST, colRef.path, auth)
+                return@addSnapshotListener
+            }
+            val items = snapshot?.toObjects(
+                CloudFavoriteItem::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            ) ?: emptyList()
+            trySend(items)
+        }
+        awaitClose { registration.remove() }
     }
 
     suspend fun signOut(context: Context) {
@@ -220,39 +271,46 @@ class CloudSyncRepository(
         unlockedAchievementIds: List<String>
     ): Result<Unit> = try {
         val user = auth.currentUser ?: error("Sign in with Google before syncing to cloud.")
+        val safeName = displayName.ifBlank { user.displayName ?: "Aki Learner" }.take(100)
+        val safeAnswered = quizTotalAnswered.coerceIn(0, 1_000_000)
+        val safeCorrect = quizTotalCorrect.coerceIn(0, safeAnswered)
+        val safeGoal = dailyGoalPoints.coerceIn(10, 5000)
+        val safeAchievements = unlockedAchievementIds.distinct().take(30)
+        val safeDate = lastActiveDate.take(20)
+
         val docRef = db.collection("users").document(user.uid)
         val existing = docRef.get().await()
         if (!existing.exists()) {
             val payload = mapOf(
                 "userId" to user.uid,
-                "displayName" to displayName.ifBlank { user.displayName ?: "Aki Learner" },
-                "totalPoints" to totalPoints.toLong(),
-                "dailyGoalPoints" to dailyGoalPoints.toLong(),
-                "todayPoints" to todayPoints.toLong(),
-                "currentStreak" to currentStreak.toLong(),
-                "bestStreak" to bestStreak.toLong(),
-                "totalLearningSeconds" to totalLearningSeconds,
-                "quizTotalAnswered" to quizTotalAnswered.toLong(),
-                "quizTotalCorrect" to quizTotalCorrect.toLong(),
-                "lastActiveDate" to lastActiveDate,
-                "unlockedAchievementIds" to unlockedAchievementIds,
+                "displayName" to safeName,
+                "totalPoints" to totalPoints.coerceIn(0, 10_000_000).toLong(),
+                "dailyGoalPoints" to safeGoal.toLong(),
+                "todayPoints" to todayPoints.coerceIn(0, 100_000).toLong(),
+                "currentStreak" to currentStreak.coerceIn(0, 36_500).toLong(),
+                "bestStreak" to bestStreak.coerceIn(0, 36_500).toLong(),
+                "totalLearningSeconds" to totalLearningSeconds.coerceIn(0L, 1_000_000_000L),
+                "quizTotalAnswered" to safeAnswered.toLong(),
+                "quizTotalCorrect" to safeCorrect.toLong(),
+                "lastActiveDate" to safeDate,
+                "unlockedAchievementIds" to safeAchievements,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             docRef.set(payload).await()
         } else {
             val updates = mapOf(
-                "displayName" to displayName.ifBlank { user.displayName ?: "Aki Learner" },
-                "totalPoints" to totalPoints.toLong(),
-                "dailyGoalPoints" to dailyGoalPoints.toLong(),
-                "todayPoints" to todayPoints.toLong(),
-                "currentStreak" to currentStreak.toLong(),
-                "bestStreak" to bestStreak.toLong(),
-                "totalLearningSeconds" to totalLearningSeconds,
-                "quizTotalAnswered" to quizTotalAnswered.toLong(),
-                "quizTotalCorrect" to quizTotalCorrect.toLong(),
-                "lastActiveDate" to lastActiveDate,
-                "unlockedAchievementIds" to unlockedAchievementIds,
+                "displayName" to safeName,
+                "totalPoints" to totalPoints.coerceIn(0, 10_000_000).toLong(),
+                "dailyGoalPoints" to safeGoal.toLong(),
+                "todayPoints" to todayPoints.coerceIn(0, 100_000).toLong(),
+                "currentStreak" to currentStreak.coerceIn(0, 36_500).toLong(),
+                "bestStreak" to bestStreak.coerceIn(0, 36_500).toLong(),
+                "totalLearningSeconds" to totalLearningSeconds.coerceIn(0L, 1_000_000_000L),
+                "quizTotalAnswered" to safeAnswered.toLong(),
+                "quizTotalCorrect" to safeCorrect.toLong(),
+                "lastActiveDate" to safeDate,
+                "unlockedAchievementIds" to safeAchievements,
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             docRef.update(updates).await()
@@ -262,13 +320,13 @@ class CloudSyncRepository(
         throw e
     } catch (e: Exception) {
         val uid = auth.currentUser?.uid ?: "unauthenticated"
-        handleFirestoreError(e, OperationType.WRITE, "users/$uid")
+        handleFirestoreError(e, OperationType.WRITE, "users/$uid", auth)
         Result.failure(e)
     }
 
     suspend fun syncFavorite(itemType: String, itemId: String, isFavorite: Boolean): Result<Unit> = try {
         val user = auth.currentUser ?: error("Sign in with Google before syncing favorites.")
-        val safeDocId = "${itemType}_${itemId}".replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
+        val safeDocId = "${itemType}_${itemId}".replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(128)
         val docRef = db.collection("users").document(user.uid)
             .collection("favorites").document(safeDocId)
         if (isFavorite) {
@@ -278,7 +336,7 @@ class CloudSyncRepository(
                     mapOf(
                         "userId" to user.uid,
                         "itemType" to itemType,
-                        "itemId" to itemId,
+                        "itemId" to itemId.take(64),
                         "createdAt" to FieldValue.serverTimestamp(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     ),
@@ -299,20 +357,22 @@ class CloudSyncRepository(
         throw e
     } catch (e: Exception) {
         val uid = auth.currentUser?.uid ?: "unauthenticated"
-        handleFirestoreError(e, OperationType.WRITE, "users/$uid/favorites")
+        handleFirestoreError(e, OperationType.WRITE, "users/$uid/favorites", auth)
         Result.failure(e)
     }
 
     suspend fun uploadQuizAttempt(mode: String, score: Int, totalQuestions: Int, pointsEarned: Int): Result<Unit> = try {
         val user = auth.currentUser ?: error("Sign in with Google before syncing quiz history.")
+        val safeTotal = totalQuestions.coerceIn(1, 200)
+        val safeScore = score.coerceIn(0, safeTotal)
         val collectionRef = db.collection("users").document(user.uid).collection("quiz_attempts")
         collectionRef.add(
             mapOf(
                 "userId" to user.uid,
-                "mode" to mode,
-                "score" to score.toLong(),
-                "totalQuestions" to totalQuestions.coerceAtLeast(1).toLong(),
-                "pointsEarned" to pointsEarned.toLong(),
+                "mode" to mode.take(40).ifBlank { "MIXED" },
+                "score" to safeScore.toLong(),
+                "totalQuestions" to safeTotal.toLong(),
+                "pointsEarned" to pointsEarned.coerceIn(0, 5000).toLong(),
                 "createdAt" to FieldValue.serverTimestamp()
             )
         ).await()
@@ -321,7 +381,7 @@ class CloudSyncRepository(
         throw e
     } catch (e: Exception) {
         val uid = auth.currentUser?.uid ?: "unauthenticated"
-        handleFirestoreError(e, OperationType.CREATE, "users/$uid/quiz_attempts")
+        handleFirestoreError(e, OperationType.CREATE, "users/$uid/quiz_attempts", auth)
         Result.failure(e)
     }
 
@@ -343,7 +403,7 @@ class CloudSyncRepository(
         throw e
     } catch (e: Exception) {
         val uid = auth.currentUser?.uid ?: "unauthenticated"
-        handleFirestoreError(e, OperationType.GET, "users/$uid")
+        handleFirestoreError(e, OperationType.GET, "users/$uid", auth)
         Result.failure(e)
     }
 }

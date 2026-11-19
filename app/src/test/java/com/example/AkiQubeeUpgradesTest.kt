@@ -31,6 +31,8 @@ import com.example.ui.SpeakingTarget
 import com.example.ui.VocabularyScreen
 import com.example.ui.generateDailyQuizQuestion
 import com.example.ui.theme.QubeeTheme
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -260,5 +262,34 @@ class AkiQubeeUpgradesTest {
             .performScrollTo()
             .assertIsDisplayed()
         composeTestRule.onNodeWithTag("speaking_ai_result_card").assertDoesNotExist()
+    }
+
+    @Test
+    fun `room learning repository merges higher firebase cloud progress safely`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefsRepo = com.example.data.AppPreferencesRepository(context)
+        val learningRepo = com.example.data.local.LearningRepository(context, prefsRepo)
+        learningRepo.ensureInitializedAndMigrate()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
+        learningRepo.mergeCloudProgressIfHigher(
+            totalPoints = 320,
+            bestStreak = 9,
+            totalLearningSeconds = 1800L,
+            unlockedIds = listOf("beginner", "quiz_champion"),
+            todayPoints = 45,
+            currentStreak = 4,
+            lastActiveDate = today
+        )
+
+        val progress = learningRepo.userProgressFlow.first()
+        val achievements = learningRepo.unlockedAchievementIdsFlow.first()
+
+        assertTrue(progress.totalPoints >= 320)
+        assertTrue(progress.bestStreakDays >= 9)
+        assertTrue(progress.currentStreakDays >= 4)
+        assertTrue(progress.todayPoints >= 45)
+        assertTrue("beginner" in achievements)
+        assertTrue("quiz_champion" in achievements)
     }
 }
