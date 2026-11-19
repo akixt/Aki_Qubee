@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,8 +19,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
@@ -31,8 +32,10 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,11 +53,13 @@ import androidx.compose.ui.unit.dp
 import com.example.data.AppLanguage
 import com.example.data.PhraseItem
 import com.example.data.ProverbItem
+import com.example.data.VocabularyItem
 
 private enum class FavoriteTabFilter {
     ALL,
     PROVERBS,
-    PHRASES
+    PHRASES,
+    VOCABULARY
 }
 
 @Composable
@@ -68,28 +73,45 @@ fun FavoritesScreen(
     onShareProverb: (ProverbItem) -> Unit,
     onExploreProverbs: () -> Unit,
     onExplorePhrases: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onToggleFavoriteVocab: (String) -> Unit = {},
+    onExploreVocabulary: () -> Unit = {}
 ) {
     val isOm = uiState.language == AppLanguage.OROMO
     var filter by remember { mutableStateOf(FavoriteTabFilter.ALL) }
+    var searchQuery by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     LaunchedEffect(filter) {
         listState.scrollToItem(0)
     }
 
-    val savedProverbs = uiState.favoriteProverbs
-    val savedPhrases = uiState.favoritePhrases
-    val totalSaved = savedProverbs.size + savedPhrases.size
+    val q = searchQuery.trim().lowercase()
+    val savedProverbs = remember(uiState.favoriteProverbs, q) {
+        uiState.favoriteProverbs.filter {
+            q.isEmpty() || it.oromo.lowercase().contains(q) || it.english.lowercase().contains(q)
+        }
+    }
+    val savedPhrases = remember(uiState.favoritePhrases, q) {
+        uiState.favoritePhrases.filter {
+            q.isEmpty() || it.oromo.lowercase().contains(q) || it.english.lowercase().contains(q)
+        }
+    }
+    val savedVocab = remember(uiState.favoriteVocabulary, q) {
+        uiState.favoriteVocabulary.filter {
+            q.isEmpty() || it.oromo.lowercase().contains(q) || it.english.lowercase().contains(q)
+        }
+    }
+    val totalSaved = uiState.favoriteProverbs.size + uiState.favoritePhrases.size + uiState.favoriteVocabulary.size
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
             .testTag("favorites_screen"),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         // Summary Header
         Card(
@@ -103,7 +125,7 @@ fun FavoritesScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -118,11 +140,11 @@ fun FavoritesScreen(
                     )
                     Text(
                         text = if (isOm) {
-                            "Mammaaksa ${savedProverbs.size} fi haasawa ${savedPhrases.size} kuufatame"
+                            "Mammaaksa ${uiState.favoriteProverbs.size} • Haasawa ${uiState.favoritePhrases.size} • Jechoota ${uiState.favoriteVocabulary.size}"
                         } else {
-                            "${savedProverbs.size} proverbs and ${savedPhrases.size} phrases saved"
+                            "${uiState.favoriteProverbs.size} proverbs • ${uiState.favoritePhrases.size} phrases • ${uiState.favoriteVocabulary.size} words"
                         },
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                     )
                 }
@@ -152,6 +174,25 @@ fun FavoritesScreen(
             }
         }
 
+        if (totalSaved > 0) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                        }
+                    }
+                },
+                placeholder = { Text(if (isOm) "Filatamoo keessaa barbaadi..." else "Filter your saved bookmarks...") },
+                modifier = Modifier.fillMaxWidth().testTag("favorites_search_input")
+            )
+        }
+
         // Filter Chips
         Row(
             modifier = Modifier
@@ -168,26 +209,33 @@ fun FavoritesScreen(
             FilterChip(
                 selected = filter == FavoriteTabFilter.PROVERBS,
                 onClick = { filter = FavoriteTabFilter.PROVERBS },
-                label = { Text(if (isOm) "Mammaaksa (${savedProverbs.size})" else "Proverbs (${savedProverbs.size})") },
+                label = { Text(if (isOm) "Mammaaksa (${uiState.favoriteProverbs.size})" else "Proverbs (${uiState.favoriteProverbs.size})") },
                 modifier = Modifier.testTag("favorites_filter_proverbs")
             )
             FilterChip(
                 selected = filter == FavoriteTabFilter.PHRASES,
                 onClick = { filter = FavoriteTabFilter.PHRASES },
-                label = { Text(if (isOm) "Haasawa (${savedPhrases.size})" else "Phrases (${savedPhrases.size})") },
+                label = { Text(if (isOm) "Haasawa (${uiState.favoritePhrases.size})" else "Phrases (${uiState.favoritePhrases.size})") },
                 modifier = Modifier.testTag("favorites_filter_phrases")
+            )
+            FilterChip(
+                selected = filter == FavoriteTabFilter.VOCABULARY,
+                onClick = { filter = FavoriteTabFilter.VOCABULARY },
+                label = { Text(if (isOm) "Jechoota (${uiState.favoriteVocabulary.size})" else "Words (${uiState.favoriteVocabulary.size})") },
+                modifier = Modifier.testTag("favorites_filter_vocab")
             )
         }
 
-        val showProverbs = filter != FavoriteTabFilter.PHRASES && savedProverbs.isNotEmpty()
-        val showPhrases = filter != FavoriteTabFilter.PROVERBS && savedPhrases.isNotEmpty()
+        val showProverbs = (filter == FavoriteTabFilter.ALL || filter == FavoriteTabFilter.PROVERBS) && savedProverbs.isNotEmpty()
+        val showPhrases = (filter == FavoriteTabFilter.ALL || filter == FavoriteTabFilter.PHRASES) && savedPhrases.isNotEmpty()
+        val showVocab = (filter == FavoriteTabFilter.ALL || filter == FavoriteTabFilter.VOCABULARY) && savedVocab.isNotEmpty()
 
-        if (!showProverbs && !showPhrases) {
+        if (!showProverbs && !showPhrases && !showVocab) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -199,7 +247,7 @@ fun FavoritesScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = if (isOm) "Wanti filatame hin jiru." else "No favorites saved yet.",
+                    text = if (isOm) "Wanti filatame hin jiru." else "No favorites found here.",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
@@ -207,27 +255,30 @@ fun FavoritesScreen(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = if (isOm) {
-                        "Mammaaksa ykn haasawa jaallattu mallattoo onnee tuquun asitti kuusi."
+                        "Mammaaksa, haasawa ykn jechoota jaallattu mallattoo onnee tuquun asitti kuusi."
                     } else {
-                        "Tap the heart button on any Mammaaksa proverb or Daily Phrase to bookmark it here."
+                        "Tap the heart button on any Proverb, Daily Phrase, or Vocabulary word to bookmark it here."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
-                Spacer(modifier = Modifier.height(18.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onExploreProverbs,
                         modifier = Modifier.testTag("favorites_explore_proverbs_button")
                     ) {
-                        Text(if (isOm) "Mammaaksa" else "Browse Proverbs")
+                        Text(if (isOm) "Mammaaksa" else "Proverbs")
                     }
                     FilledTonalButton(
                         onClick = onExplorePhrases,
                         modifier = Modifier.testTag("favorites_explore_phrases_button")
                     ) {
-                        Text(if (isOm) "Haasawa" else "Browse Phrases")
+                        Text(if (isOm) "Haasawa" else "Phrases")
+                    }
+                    FilledTonalButton(onClick = onExploreVocabulary) {
+                        Text(if (isOm) "Jechoota" else "Vocab")
                     }
                 }
             }
@@ -245,8 +296,7 @@ fun FavoritesScreen(
                         Text(
                             text = if (isOm) "Mammaaksa Filatamoo" else "Saved Proverbs",
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 4.dp)
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                     items(savedProverbs, key = { "fav_prov_${it.id}" }) { proverb ->
@@ -268,7 +318,7 @@ fun FavoritesScreen(
                             text = if (isOm) "Haasawa Filatamoo" else "Saved Daily Phrases",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp)
+                            modifier = Modifier.padding(top = 6.dp)
                         )
                     }
                     items(savedPhrases, key = { "fav_phrase_${it.id}" }) { phrase ->
@@ -278,6 +328,26 @@ fun FavoritesScreen(
                             onRemoveFavorite = { onToggleFavoritePhrase(phrase.id) },
                             onSpeak = { onSpeakText(phrase.oromo) },
                             onCopy = { onCopyText("${phrase.oromo} — ${phrase.english}") }
+                        )
+                    }
+                }
+
+                if (showVocab) {
+                    item(key = "header_saved_vocab") {
+                        Text(
+                            text = if (isOm) "Jechoota Filatamoo" else "Saved Vocabulary Words",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                    items(savedVocab, key = { "fav_vocab_${it.id}" }) { word ->
+                        FavoriteVocabCard(
+                            word = word,
+                            isOm = isOm,
+                            onRemoveFavorite = { onToggleFavoriteVocab(word.id) },
+                            onSpeak = { onSpeakText(word.oromo) },
+                            onCopy = { onCopyText("${word.oromo} — ${word.english}") }
                         )
                     }
                 }
@@ -306,9 +376,7 @@ private fun FavoriteProverbCard(
             .testTag("favorite_proverb_card_${proverb.id}")
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -316,10 +384,7 @@ private fun FavoriteProverbCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(50)
-                ) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(50)) {
                     Text(
                         text = proverbCategoryLabel(proverb.category, isOm),
                         style = MaterialTheme.typography.labelSmall,
@@ -327,7 +392,6 @@ private fun FavoriteProverbCard(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
-
                 FilledTonalIconButton(
                     onClick = onRemoveFavorite,
                     colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -336,54 +400,17 @@ private fun FavoriteProverbCard(
                     ),
                     modifier = Modifier.testTag("unfavorite_proverb_${proverb.id}")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = if (isOm) "Filatamoo keessaa haqi" else "Remove from favorites"
-                    )
+                    Icon(Icons.Filled.Favorite, contentDescription = if (isOm) "Haqi" else "Remove from favorites")
                 }
             }
-
-            Text(
-                text = "“${proverb.oromo}”",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = proverb.english,
-                style = MaterialTheme.typography.bodyMedium,
-                fontStyle = FontStyle.Italic,
-                color = MaterialTheme.colorScheme.secondary
-            )
-            Text(
-                text = if (isOm) proverb.meaningOm else proverb.meaningEn,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Text("“${proverb.oromo}”", style = MaterialTheme.typography.titleMedium)
+            Text(proverb.english, style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.secondary)
+            Text(if (isOm) proverb.meaningOm else proverb.meaningEn, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilledTonalIconButton(onClick = onSpeak) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = if (isOm) "Dhaggeeffadhu" else "Listen"
-                        )
-                    }
-                    FilledTonalIconButton(onClick = onCopy) {
-                        Icon(
-                            imageVector = Icons.Filled.ContentCopy,
-                            contentDescription = if (isOm) "Garagalchi" else "Copy"
-                        )
-                    }
-                    FilledTonalIconButton(onClick = onShare) {
-                        Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = if (isOm) "Qoodi" else "Share"
-                        )
-                    }
+                    FilledTonalIconButton(onClick = onSpeak) { Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Listen") }
+                    FilledTonalIconButton(onClick = onCopy) { Icon(Icons.Filled.ContentCopy, contentDescription = "Copy") }
+                    FilledTonalIconButton(onClick = onShare) { Icon(Icons.Filled.Share, contentDescription = "Share") }
                 }
             }
         }
@@ -402,25 +429,11 @@ private fun FavoritePhraseCard(
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("favorite_phrase_card_${phrase.id}")
+        modifier = Modifier.fillMaxWidth().testTag("favorite_phrase_card_${phrase.id}")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                    shape = RoundedCornerShape(50)
-                ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(50)) {
                     Text(
                         text = phraseCategoryLabel(phrase.category, isOm),
                         style = MaterialTheme.typography.labelSmall,
@@ -428,7 +441,6 @@ private fun FavoritePhraseCard(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
-
                 FilledTonalIconButton(
                     onClick = onRemoveFavorite,
                     colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -437,47 +449,62 @@ private fun FavoritePhraseCard(
                     ),
                     modifier = Modifier.testTag("unfavorite_phrase_${phrase.id}")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = if (isOm) "Filatamoo keessaa haqi" else "Remove from favorites"
-                    )
+                    Icon(Icons.Filled.Favorite, contentDescription = "Remove from favorites")
                 }
             }
-
-            Text(
-                text = phrase.oromo,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = phrase.english,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = phrase.pronunciationTip,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Text(phrase.oromo, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(phrase.english, style = MaterialTheme.typography.bodyLarge)
+            Text(phrase.pronunciationTip, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilledTonalIconButton(onClick = onSpeak) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = if (isOm) "Dhaggeeffadhu" else "Speak phrase"
-                        )
-                    }
-                    FilledTonalIconButton(onClick = onCopy) {
-                        Icon(
-                            imageVector = Icons.Filled.ContentCopy,
-                            contentDescription = if (isOm) "Garagalchi" else "Copy phrase"
-                        )
-                    }
+                    FilledTonalIconButton(onClick = onSpeak) { Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Speak") }
+                    FilledTonalIconButton(onClick = onCopy) { Icon(Icons.Filled.ContentCopy, contentDescription = "Copy") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteVocabCard(
+    word: VocabularyItem,
+    isOm: Boolean,
+    onRemoveFavorite: () -> Unit,
+    onSpeak: () -> Unit,
+    onCopy: () -> Unit
+) {
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
+        modifier = Modifier.fillMaxWidth().testTag("favorite_vocab_card_${word.id}")
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(50)) {
+                    Text(
+                        text = vocabCategoryLabel(word.category, isOm),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                FilledTonalIconButton(
+                    onClick = onRemoveFavorite,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Icon(Icons.Filled.Favorite, contentDescription = "Remove word")
+                }
+            }
+            Text("${word.oromo} — ${word.english}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(word.exampleOm, style = MaterialTheme.typography.bodyMedium)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilledTonalIconButton(onClick = onSpeak) { Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Listen") }
+                    FilledTonalIconButton(onClick = onCopy) { Icon(Icons.Filled.ContentCopy, contentDescription = "Copy") }
                 }
             }
         }

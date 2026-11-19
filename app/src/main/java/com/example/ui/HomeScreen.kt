@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,23 +15,40 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.outlined.Abc
-import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,26 +57,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.AppLanguage
+import com.example.data.PhraseCategory
 import com.example.data.ProverbCategory
 import com.example.data.ProverbItem
 import com.example.ui.theme.GoldAccent
 import kotlinx.coroutines.launch
 import java.util.Calendar
-
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Quiz
-import androidx.compose.material3.OutlinedButton
-import com.example.data.OromoContent
-import com.example.data.PhraseCategory
 
 @Composable
 fun HomeScreen(
@@ -80,7 +94,13 @@ fun HomeScreen(
     onBrowsePhraseCategory: (PhraseCategory) -> Unit,
     onNavigateToPhrases: () -> Unit,
     modifier: Modifier = Modifier,
-    onRecordQuizAnswer: (Boolean) -> Unit = {}
+    onRecordQuizAnswer: (Boolean) -> Unit = {},
+    onNavigateToVocabulary: () -> Unit = {},
+    onOpenSpeakingLab: () -> Unit = {},
+    onOpenFlashcards: () -> Unit = {},
+    onOpenListeningPractice: () -> Unit = {},
+    onOpenWritingPractice: () -> Unit = {},
+    onOpenProgress: () -> Unit = {}
 ) {
     val isOm = uiState.language == AppLanguage.OROMO
     val listState = rememberLazyListState()
@@ -97,16 +117,19 @@ fun HomeScreen(
 
     val filteredProverbs = uiState.filteredProverbs
     val featured = uiState.featuredProverb
+    val progress = uiState.userProgress
+    val goalRatio = (progress.todayPoints.toFloat() / uiState.dailyGoalPoints.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val recentActivities = uiState.learningHistory.take(4)
 
     LazyColumn(
         state = listState,
         modifier = modifier
             .fillMaxSize()
             .testTag("home_lazy_column"),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Hero Editorial Banner
+        // 1. Hero Editorial Banner (Aki Qubee + Powered by AKI TECH + Slogan)
         item(key = "hero_banner") {
             Card(
                 shape = MaterialTheme.shapes.large,
@@ -116,7 +139,7 @@ fun HomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(210.dp)
+                        .height(156.dp)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.img_hero_highlands),
@@ -130,8 +153,8 @@ fun HomeScreen(
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
-                                        Color.Black.copy(alpha = 0.15f),
-                                        Color(0xFF0E2920).copy(alpha = 0.86f)
+                                        Color.Black.copy(alpha = 0.22f),
+                                        Color(0xFF0E2920).copy(alpha = 0.9f)
                                     )
                                 )
                             )
@@ -139,7 +162,7 @@ fun HomeScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(20.dp),
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
@@ -148,15 +171,15 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
-                                color = GoldAccent.copy(alpha = 0.92f),
+                                color = GoldAccent.copy(alpha = 0.94f),
                                 shape = RoundedCornerShape(50)
                             ) {
                                 Text(
-                                    text = if (isOm) "Baga Nagaan Dhuftan" else "Afaan Oromo Companion",
+                                    text = "Powered by AKI TECH",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = Color(0xFF1A1400),
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
                                 )
                             }
 
@@ -165,25 +188,31 @@ fun HomeScreen(
                                 contentDescription = stringResource(id = R.string.brand_logo_cd),
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .size(52.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
                                     .testTag("hero_brand_logo")
                             )
                         }
 
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 text = greeting,
-                                style = MaterialTheme.typography.displaySmall,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
+                                text = stringResource(id = if (isOm) R.string.brand_tagline_om else R.string.brand_tagline_en),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = GoldAccent
+                            )
+                            Text(
                                 text = if (isOm) {
-                                    "Qubee, haasawa ${uiState.allPhrases.size}+ fi mammaaksa ${uiState.allProverbs.size}+ bakka tokkotti."
+                                    "Qubee 33 • Jechoota ${uiState.allVocabulary.size}+ • Haasawa ${uiState.allPhrases.size}+ • Mammaaksa ${uiState.allProverbs.size}+"
                                 } else {
-                                    "Explore Qubee, ${uiState.allPhrases.size}+ daily phrases, and ${uiState.allProverbs.size}+ Oromo proverbs."
+                                    "33 Qubee • ${uiState.allVocabulary.size}+ Words • ${uiState.allPhrases.size}+ Phrases • ${uiState.allProverbs.size}+ Proverbs"
                                 },
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.9f)
                             )
                         }
@@ -192,7 +221,7 @@ fun HomeScreen(
             }
         }
 
-        // Proverbs of the Day Card (random Mammaaksa + English translation)
+        // 2. Proverbs of the Day Card (+XP on discover)
         item(key = "proverb_of_day") {
             ProverbOfTheDayCard(
                 proverb = featured,
@@ -209,12 +238,111 @@ fun HomeScreen(
             )
         }
 
-        // Quick Exploration Shortcuts (Qubee Alphabet + Interactive TTS Chart)
+        // 3. Learning Progress Overview & Continue Learning
+        item(key = "progress_overview") {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                onClick = onOpenProgress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("home_progress_overview_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Filled.Star, null, tint = GoldAccent, modifier = Modifier.size(22.dp))
+                            Column {
+                                Text(
+                                    text = "${progress.totalPoints} XP",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = if (isOm) "Galma Har'aa: ${progress.todayPoints}/${uiState.dailyGoalPoints} XP" else "Today: ${progress.todayPoints}/${uiState.dailyGoalPoints} XP goal",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(50)) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Filled.LocalFireDepartment, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                                    Text("${progress.currentStreakDays}d", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(50)) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Filled.EmojiEvents, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                    Text("${uiState.unlockedAchievementIds.size}/6", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    LinearProgressIndicator(
+                        progress = { goalRatio },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val lastItem = recentActivities.firstOrNull()
+                        Text(
+                            text = if (lastItem != null) {
+                                if (isOm) "Itti fufi: ${lastItem.title}" else "Continue: ${lastItem.title}"
+                            } else {
+                                if (isOm) "Barumsa har'aa eegali" else "Start today's study session"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onOpenProgress) {
+                            Text(if (isOm) "Bal'ina" else "Stats")
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(15.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Quick Access Learning Modules Grid
         item(key = "quick_shortcuts") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     QuickModuleCard(
                         title = if (isOm) "Qubee Baradhu" else "Learn Qubee",
@@ -229,7 +357,7 @@ fun HomeScreen(
                     )
                     QuickModuleCard(
                         title = if (isOm) "Gabatee Qubee" else "Qubee Chart",
-                        subtitle = if (isOm) "Tuqii dhaggeeffadhu" else "Tap letters for TTS",
+                        subtitle = if (isOm) "Tuqii dhaggeeffadhu" else "Tap letters for audio",
                         icon = Icons.Filled.GridView,
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -240,7 +368,68 @@ fun HomeScreen(
                     )
                 }
 
-                val favCount = uiState.favoriteProverbIds.size + uiState.favoritePhraseIds.size
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    QuickModuleCard(
+                        title = if (isOm) "Jechoota (${uiState.allVocabulary.size}+)" else "Vocabulary",
+                        subtitle = if (isOm) "OM ↔ EN kuusaa" else "${uiState.allVocabulary.size}+ OM ↔ EN words",
+                        icon = Icons.AutoMirrored.Filled.MenuBook,
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                        onClick = onNavigateToVocabulary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("quick_vocab_card")
+                    )
+                    QuickModuleCard(
+                        title = if (isOm) "Shaakala Dubbii" else "Speaking AI",
+                        subtitle = if (isOm) "Waraabi & madaali" else "Record & compare",
+                        icon = Icons.Filled.Mic,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onOpenSpeakingLab,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("quick_speaking_card")
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onOpenFlashcards,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(48.dp).testTag("home_flashcards_button")
+                    ) {
+                        Icon(Icons.Filled.Style, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isOm) "Kaardii" else "Cards", maxLines = 1)
+                    }
+                    FilledTonalButton(
+                        onClick = onOpenListeningPractice,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(48.dp).testTag("home_listening_button")
+                    ) {
+                        Icon(Icons.Filled.Headphones, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isOm) "Dhaga'i" else "Listen", maxLines = 1)
+                    }
+                    FilledTonalButton(
+                        onClick = onOpenWritingPractice,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(48.dp).testTag("home_writing_button")
+                    ) {
+                        Icon(Icons.Filled.Draw, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isOm) "Barreessi" else "Write", maxLines = 1)
+                    }
+                }
+
+                val favCount = uiState.favoriteProverbIds.size + uiState.favoritePhraseIds.size + uiState.favoriteVocabIds.size
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -253,13 +442,9 @@ fun HomeScreen(
                             .height(48.dp)
                             .testTag("home_practice_quiz_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Quiz,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Icon(Icons.Filled.Quiz, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.size(6.dp))
-                        Text(if (isOm) "Qormaata Guyyaa" else "Daily Quiz")
+                        Text(if (isOm) "Qormaata (8)" else "8-Mode Quiz")
                     }
                     OutlinedButton(
                         onClick = onNavigateToFavorites,
@@ -276,15 +461,13 @@ fun HomeScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.size(6.dp))
-                        Text(
-                            if (isOm) "Filatamoo ($favCount)" else "Favorites ($favCount)"
-                        )
+                        Text(if (isOm) "Filatamoo ($favCount)" else "Favorites ($favCount)")
                     }
                 }
             }
         }
 
-        // Daily Quiz Interactive Multiple-Choice Progress Card
+        // 5. Daily Quiz Interactive Multiple-Choice Progress Card
         item(key = "daily_quiz_section") {
             DailyQuizHomeCard(
                 isOm = isOm,
@@ -296,7 +479,7 @@ fun HomeScreen(
             )
         }
 
-        // Daily Phrases Interactive Contextual Section
+        // 6. Daily Phrases Interactive Contextual Section
         item(key = "daily_phrases_section") {
             DailyPhrasesHomeSection(
                 isOm = isOm,
@@ -310,7 +493,47 @@ fun HomeScreen(
             )
         }
 
-        // Search and Category Filters for the 550+ Proverbs Library
+        // 7. Recent Learning Activities Card
+        if (recentActivities.isNotEmpty()) {
+            item(key = "recent_learning_activities") {
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Filled.History, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = if (isOm) "Sochii Barumsaa Dhiyeenyaa" else "Recent Learning Activity",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(recentActivities, key = { it.historyKey }) { entry ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    onClick = { onSpeakProverb(entry.title) }
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                        Text(entry.module, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        Text(entry.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8. Proverbs Library Archive & Filters
         item(key = "proverb_archive_controls") {
             ProverbArchiveControls(
                 searchQuery = uiState.proverbSearchQuery,
@@ -372,7 +595,7 @@ fun HomeScreen(
                     onClick = {
                         onSelectProverbById(item.id)
                         scope.launch {
-                            listState.animateScrollToItem(1)
+                            listState.animateScrollToItem(2)
                         }
                     }
                 )
@@ -385,7 +608,7 @@ fun HomeScreen(
 private fun QuickModuleCard(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     containerColor: Color,
     contentColor: Color,
     onClick: () -> Unit,
@@ -399,38 +622,25 @@ private fun QuickModuleCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(26.dp)
-                )
+                Icon(icon, null, tint = contentColor, modifier = Modifier.size(24.dp))
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = null,
                     tint = contentColor.copy(alpha = 0.75f),
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = contentColor
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.85f)
-                )
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = contentColor)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = contentColor.copy(alpha = 0.85f))
             }
         }
     }

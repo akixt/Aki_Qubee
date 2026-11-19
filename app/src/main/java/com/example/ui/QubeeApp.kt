@@ -8,11 +8,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -24,14 +27,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Abc
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Abc
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,13 +50,18 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,27 +71,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.example.R
 import com.example.data.AppLanguage
 import com.example.data.ProverbItem
+import com.example.ui.theme.GoldAccent
 import kotlinx.coroutines.launch
-
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.FavoriteBorder
 
 const val ROUTE_HOME = "home"
 const val ROUTE_QUBEE = "qubee"
 const val ROUTE_PHRASES = "phrases"
 const val ROUTE_FAVORITES = "favorites"
+
+private enum class LearnHubSubTab { QUBEE, VOCABULARY }
 
 private data class NavDestination(
     val route: String,
@@ -127,28 +139,10 @@ private val destinations = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QubeeApp(
-    uiState: QubeeUiState,
-    isDarkTheme: Boolean,
-    onToggleLanguage: () -> Unit,
-    onSelectLanguage: (AppLanguage) -> Unit,
-    onToggleTheme: () -> Unit,
-    onSelectThemeOverride: (Boolean?) -> Unit,
-    onSelectTtsSpeed: (Float) -> Unit,
-    onRandomProverb: () -> Unit,
-    onNextProverb: () -> Unit,
-    onSelectProverbById: (String) -> Unit,
-    onToggleFavoriteProverb: (String) -> Unit,
-    onToggleFavoritePhrase: (String) -> Unit,
-    onClearAllFavorites: () -> Unit,
-    onSearchProverbs: (String) -> Unit,
-    onSelectProverbCategory: (com.example.data.ProverbCategory?) -> Unit,
-    onSelectQubeeFilter: (com.example.data.QubeeCategory?) -> Unit,
-    onSelectLetter: (com.example.data.QubeeLetter) -> Unit,
-    onSearchPhrases: (String) -> Unit,
-    onSelectPhraseCategory: (com.example.data.PhraseCategory?) -> Unit,
-    onSpeakText: (String) -> Boolean,
-    onRecordQuizAnswer: (Boolean) -> Unit = {}
+    viewModel: QubeeViewModel,
+    isDarkTheme: Boolean
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: ROUTE_HOME
@@ -157,17 +151,31 @@ fun QubeeApp(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val isOm = uiState.language == AppLanguage.OROMO
+
+    var learnHubTab by remember { mutableStateOf(LearnHubSubTab.QUBEE) }
     var showQubeeChartModal by remember { mutableStateOf(false) }
     var showSettingsModal by remember { mutableStateOf(false) }
     var showPracticeQuizModal by remember { mutableStateOf(false) }
+    var showSpeakingModal by remember { mutableStateOf(false) }
+    var showFlashcardsModal by remember { mutableStateOf(false) }
+    var showListeningModal by remember { mutableStateOf(false) }
+    var showWritingModal by remember { mutableStateOf(false) }
+    var showProgressModal by remember { mutableStateOf(false) }
+    var showUnifiedSearchModal by remember { mutableStateOf(false) }
 
-    val copySuccessMessage = stringResource(
-        if (isOm) R.string.copy_success_om else R.string.copy_success_en
-    )
+    LaunchedEffect(uiState.lastPointsToastMessage) {
+        val msg = uiState.lastPointsToastMessage
+        if (!msg.isNullOrBlank()) {
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearPointsToast()
+        }
+    }
+
+    val copySuccessMessage = stringResource(if (isOm) R.string.copy_success_om else R.string.copy_success_en)
     val ttsUnavailableMessage = if (isOm) {
         "Sagaleen dubbisaa meeshaa kanarratti hin qophoofne."
     } else {
-        "Voice playback is unavailable on this device."
+        "Device speech voice unavailable offline — check phonetic guide."
     }
 
     fun navigateTo(route: String) {
@@ -182,10 +190,8 @@ fun QubeeApp(
 
     fun copyToClipboard(text: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("Qubee", text))
-        scope.launch {
-            snackbarHostState.showSnackbar(copySuccessMessage)
-        }
+        clipboard?.setPrimaryClip(ClipData.newPlainText("Aki Qubee", text))
+        scope.launch { snackbarHostState.showSnackbar(copySuccessMessage) }
     }
 
     fun shareProverb(proverb: ProverbItem) {
@@ -198,11 +204,9 @@ fun QubeeApp(
     }
 
     fun handleSpeak(text: String) {
-        val started = onSpeakText(text)
+        val started = viewModel.speak(text)
         if (!started) {
-            scope.launch {
-                snackbarHostState.showSnackbar(ttsUnavailableMessage)
-            }
+            scope.launch { snackbarHostState.showSnackbar(ttsUnavailableMessage) }
         }
     }
 
@@ -218,16 +222,25 @@ fun QubeeApp(
                         containerColor = MaterialTheme.colorScheme.background
                     ),
                     navigationIcon = {
-                        IconButton(
-                            onClick = onToggleTheme,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("theme_toggle_button")
-                        ) {
-                            Icon(
-                                imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                                contentDescription = stringResource(id = R.string.theme_toggle_cd)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { viewModel.toggleDarkTheme(isDarkTheme) },
+                                modifier = Modifier.minimumInteractiveComponentSize().testTag("theme_toggle_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                    contentDescription = stringResource(id = R.string.theme_toggle_cd)
+                                )
+                            }
+                            IconButton(
+                                onClick = { showUnifiedSearchModal = true },
+                                modifier = Modifier.minimumInteractiveComponentSize().testTag("unified_search_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = if (isOm) "Barbaadi" else "Global search"
+                                )
+                            }
                         }
                     },
                     title = {
@@ -239,10 +252,7 @@ fun QubeeApp(
                                 painter = painterResource(id = R.drawable.aki_logo),
                                 contentDescription = stringResource(id = R.string.brand_logo_cd),
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .testTag("topbar_brand_logo")
+                                modifier = Modifier.size(30.dp).clip(CircleShape).testTag("topbar_brand_logo")
                             )
                             Text(
                                 text = stringResource(id = R.string.app_name),
@@ -252,23 +262,40 @@ fun QubeeApp(
                         }
                     },
                     actions = {
-                        FilledTonalButton(
-                            onClick = onToggleLanguage,
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("language_toggle_button")
+                            onClick = { showProgressModal = true },
+                            modifier = Modifier.testTag("topbar_xp_badge")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(Icons.Filled.Star, null, tint = GoldAccent, modifier = Modifier.size(14.dp))
+                                Text(
+                                    text = "${uiState.userProgress.totalPoints}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = viewModel::toggleLanguage,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.minimumInteractiveComponentSize().testTag("language_toggle_button")
                         ) {
                             Text(
-                                text = if (isOm) "OM ⇄ EN" else "EN ⇄ OM",
-                                style = MaterialTheme.typography.labelMedium
+                                text = if (isOm) "OM⇄EN" else "EN⇄OM",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                         IconButton(
                             onClick = { showSettingsModal = true },
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("settings_button")
+                            modifier = Modifier.minimumInteractiveComponentSize().testTag("settings_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Settings,
@@ -280,14 +307,10 @@ fun QubeeApp(
             },
             bottomBar = {
                 if (!useRail) {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         destinations.forEach { dest ->
                             val selected = currentRoute == dest.route
-                            val label = stringResource(
-                                if (isOm) dest.labelOmRes else dest.labelEnRes
-                            )
+                            val label = stringResource(if (isOm) dest.labelOmRes else dest.labelEnRes)
                             NavigationBarItem(
                                 selected = selected,
                                 onClick = { navigateTo(dest.route) },
@@ -319,9 +342,7 @@ fun QubeeApp(
                         Spacer(modifier = Modifier.weight(1f))
                         destinations.forEach { dest ->
                             val selected = currentRoute == dest.route
-                            val label = stringResource(
-                                if (isOm) dest.labelOmRes else dest.labelEnRes
-                            )
+                            val label = stringResource(if (isOm) dest.labelOmRes else dest.labelEnRes)
                             NavigationRailItem(
                                 selected = selected,
                                 onClick = { navigateTo(dest.route) },
@@ -341,79 +362,173 @@ fun QubeeApp(
                 }
 
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     contentAlignment = Alignment.TopCenter
                 ) {
                     NavHost(
                         navController = navController,
                         startDestination = ROUTE_HOME,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .widthIn(max = 840.dp)
+                        modifier = Modifier.fillMaxSize().widthIn(max = 840.dp)
                     ) {
                         composable(ROUTE_HOME) {
                             HomeScreen(
                                 uiState = uiState,
-                                onRandomProverb = onRandomProverb,
-                                onNextProverb = onNextProverb,
-                                onSelectProverbById = onSelectProverbById,
-                                onToggleFavoriteProverb = onToggleFavoriteProverb,
-                                onToggleFavoritePhrase = onToggleFavoritePhrase,
-                                onProverbSearchChange = onSearchProverbs,
-                                onSelectProverbCategory = onSelectProverbCategory,
+                                onRandomProverb = viewModel::randomProverb,
+                                onNextProverb = viewModel::nextProverb,
+                                onSelectProverbById = viewModel::selectProverbById,
+                                onToggleFavoriteProverb = viewModel::toggleFavoriteProverb,
+                                onToggleFavoritePhrase = viewModel::toggleFavoritePhrase,
+                                onProverbSearchChange = viewModel::updateProverbSearch,
+                                onSelectProverbCategory = viewModel::setProverbFilter,
                                 onSpeakProverb = ::handleSpeak,
                                 onCopyText = ::copyToClipboard,
                                 onShareProverb = ::shareProverb,
-                                onNavigateToQubee = { navigateTo(ROUTE_QUBEE) },
+                                onNavigateToQubee = {
+                                    learnHubTab = LearnHubSubTab.QUBEE
+                                    navigateTo(ROUTE_QUBEE)
+                                },
                                 onOpenQubeeChart = { showQubeeChartModal = true },
                                 onOpenPracticeQuiz = { showPracticeQuizModal = true },
                                 onNavigateToFavorites = { navigateTo(ROUTE_FAVORITES) },
                                 onBrowsePhraseCategory = { category ->
-                                    onSelectPhraseCategory(category)
+                                    viewModel.setPhraseFilter(category)
                                     navigateTo(ROUTE_PHRASES)
                                 },
                                 onNavigateToPhrases = {
-                                    onSelectPhraseCategory(null)
+                                    viewModel.setPhraseFilter(null)
                                     navigateTo(ROUTE_PHRASES)
                                 },
-                                onRecordQuizAnswer = onRecordQuizAnswer
+                                onRecordQuizAnswer = { isCorrect ->
+                                    viewModel.recordQuizAnswer(isCorrect, markDailyCompleted = true)
+                                },
+                                onNavigateToVocabulary = {
+                                    learnHubTab = LearnHubSubTab.VOCABULARY
+                                    navigateTo(ROUTE_QUBEE)
+                                },
+                                onOpenSpeakingLab = { showSpeakingModal = true },
+                                onOpenFlashcards = { showFlashcardsModal = true },
+                                onOpenListeningPractice = { showListeningModal = true },
+                                onOpenWritingPractice = { showWritingModal = true },
+                                onOpenProgress = { showProgressModal = true }
                             )
                         }
+
                         composable(ROUTE_QUBEE) {
-                            QubeeAlphabetScreen(
-                                uiState = uiState,
-                                onSelectFilter = onSelectQubeeFilter,
-                                onSelectLetter = onSelectLetter,
-                                onSpeakWord = ::handleSpeak,
-                                onOpenFullChart = { showQubeeChartModal = true }
-                            )
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = learnHubTab == LearnHubSubTab.QUBEE,
+                                        onClick = { learnHubTab = LearnHubSubTab.QUBEE },
+                                        label = { Text(if (isOm) "Qubee (33)" else "Qubee (33)") },
+                                        modifier = Modifier.testTag("learn_hub_qubee_tab")
+                                    )
+                                    FilterChip(
+                                        selected = learnHubTab == LearnHubSubTab.VOCABULARY,
+                                        onClick = { learnHubTab = LearnHubSubTab.VOCABULARY },
+                                        label = { Text(if (isOm) "Jechoota (${uiState.allVocabulary.size}+)" else "Vocabulary (${uiState.allVocabulary.size}+)") },
+                                        modifier = Modifier.testTag("learn_hub_vocab_tab")
+                                    )
+                                }
+
+                                if (learnHubTab == LearnHubSubTab.QUBEE) {
+                                    QubeeAlphabetScreen(
+                                        uiState = uiState,
+                                        onSelectFilter = viewModel::setQubeeFilter,
+                                        onSelectLetter = viewModel::selectLetter,
+                                        onSpeakWord = ::handleSpeak,
+                                        onOpenFullChart = { showQubeeChartModal = true },
+                                        onToggleMastered = { letter ->
+                                            viewModel.toggleMasteredItem("QUBEE", letter.name, letter.symbol)
+                                        },
+                                        onPracticeWriting = { letter ->
+                                            viewModel.selectLetter(letter)
+                                            showWritingModal = true
+                                        },
+                                        onPracticeSpeaking = { letter ->
+                                            viewModel.setSpeakingTarget(
+                                                targetOromo = letter.exampleWord,
+                                                targetEnglish = letter.exampleMeaningEn,
+                                                phoneticTip = letter.soundGuideEn
+                                            )
+                                            showSpeakingModal = true
+                                        },
+                                        onOpenQubeeQuiz = { showPracticeQuizModal = true },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                } else {
+                                    VocabularyScreen(
+                                        uiState = uiState,
+                                        onSearchChange = viewModel::updateVocabSearch,
+                                        onSelectCategory = viewModel::setVocabFilter,
+                                        onSelectLetterPrefix = viewModel::setVocabLetterFilter,
+                                        onToggleFavoriteVocab = viewModel::toggleFavoriteVocab,
+                                        onToggleMasteredVocab = { word ->
+                                            viewModel.toggleMasteredItem("VOCAB", word.id, word.oromo)
+                                        },
+                                        onVocabViewed = viewModel::recordVocabViewed,
+                                        onSpeakText = ::handleSpeak,
+                                        onPracticeSpeaking = { word ->
+                                            viewModel.setSpeakingTarget(
+                                                targetOromo = word.oromo,
+                                                targetEnglish = word.english,
+                                                phoneticTip = word.pronunciation
+                                            )
+                                            showSpeakingModal = true
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
                         }
+
                         composable(ROUTE_PHRASES) {
                             PhrasesScreen(
                                 uiState = uiState,
-                                onSearchChange = onSearchPhrases,
-                                onSelectCategory = onSelectPhraseCategory,
-                                onToggleFavoritePhrase = onToggleFavoritePhrase,
+                                onSearchChange = viewModel::updatePhraseSearch,
+                                onSelectCategory = viewModel::setPhraseFilter,
+                                onToggleFavoritePhrase = viewModel::toggleFavoritePhrase,
                                 onCopyPhrase = ::copyToClipboard,
-                                onSpeakPhrase = ::handleSpeak
+                                onSpeakPhrase = { text ->
+                                    handleSpeak(text)
+                                    uiState.allPhrases.firstOrNull { it.oromo == text }?.let {
+                                        viewModel.recordPhraseViewed(it)
+                                    }
+                                },
+                                onPracticeSpeaking = { phrase ->
+                                    viewModel.setSpeakingTarget(
+                                        targetOromo = phrase.oromo,
+                                        targetEnglish = phrase.english,
+                                        phoneticTip = phrase.pronunciationTip
+                                    )
+                                    showSpeakingModal = true
+                                }
                             )
                         }
+
                         composable(ROUTE_FAVORITES) {
                             FavoritesScreen(
                                 uiState = uiState,
-                                onToggleFavoriteProverb = onToggleFavoriteProverb,
-                                onToggleFavoritePhrase = onToggleFavoritePhrase,
+                                onToggleFavoriteProverb = viewModel::toggleFavoriteProverb,
+                                onToggleFavoritePhrase = viewModel::toggleFavoritePhrase,
                                 onSelectProverbInHome = { proverbId ->
-                                    onSelectProverbById(proverbId)
+                                    viewModel.selectProverbById(proverbId)
                                     navigateTo(ROUTE_HOME)
                                 },
                                 onSpeakText = ::handleSpeak,
                                 onCopyText = ::copyToClipboard,
                                 onShareProverb = ::shareProverb,
                                 onExploreProverbs = { navigateTo(ROUTE_HOME) },
-                                onExplorePhrases = { navigateTo(ROUTE_PHRASES) }
+                                onExplorePhrases = { navigateTo(ROUTE_PHRASES) },
+                                onToggleFavoriteVocab = viewModel::toggleFavoriteVocab,
+                                onExploreVocabulary = {
+                                    learnHubTab = LearnHubSubTab.VOCABULARY
+                                    navigateTo(ROUTE_QUBEE)
+                                }
                             )
                         }
                     }
@@ -427,25 +542,40 @@ fun QubeeApp(
             selectedLetter = uiState.selectedLetter,
             isOm = isOm,
             onLetterClick = { letter ->
-                onSelectLetter(letter)
+                viewModel.selectLetter(letter)
                 handleSpeak(letter.ttsPronunciation)
             },
-            onReplaySound = { letter ->
-                handleSpeak(letter.ttsPronunciation)
-            },
-            onDismiss = { showQubeeChartModal = false }
+            onReplaySound = { letter -> handleSpeak(letter.ttsPronunciation) },
+            onDismiss = { showQubeeChartModal = false },
+            onPracticeSpeaking = { letter ->
+                showQubeeChartModal = false
+                viewModel.setSpeakingTarget(
+                    targetOromo = letter.exampleWord,
+                    targetEnglish = letter.exampleMeaningEn,
+                    phoneticTip = letter.soundGuideEn
+                )
+                showSpeakingModal = true
+            }
         )
     }
 
     if (showSettingsModal) {
         SettingsModal(
             uiState = uiState,
-            onSelectLanguage = onSelectLanguage,
-            onSelectThemeOverride = onSelectThemeOverride,
-            onSelectTtsSpeed = onSelectTtsSpeed,
-            onClearFavorites = onClearAllFavorites,
+            onSelectLanguage = viewModel::setLanguage,
+            onSelectThemeOverride = viewModel::setDarkThemeOverride,
+            onSelectTtsSpeed = viewModel::setTtsSpeed,
+            onClearFavorites = viewModel::clearAllFavorites,
             onOpenQuiz = { showPracticeQuizModal = true },
-            onDismiss = { showSettingsModal = false }
+            onDismiss = { showSettingsModal = false },
+            onSelectTextScale = viewModel::setTextScale,
+            onSelectRepeatCount = viewModel::setRepeatCount,
+            onSelectDailyGoal = viewModel::setDailyGoalPoints,
+            onToggleReminders = viewModel::setRemindersEnabled,
+            onSignInGoogle = viewModel::signInWithGoogle,
+            onSyncCloud = viewModel::syncCloudBackup,
+            onSignOutCloud = viewModel::signOutCloud,
+            onResetAllData = viewModel::resetAllLearningData
         )
     }
 
@@ -456,7 +586,112 @@ fun QubeeApp(
             onDismiss = { showPracticeQuizModal = false },
             allPhrases = uiState.allPhrases,
             quizProgress = uiState.quizProgress,
-            onRecordAnswer = onRecordQuizAnswer
+            onRecordAnswer = { isCorrect -> viewModel.recordQuizAnswer(isCorrect, markDailyCompleted = true) },
+            allVocabulary = uiState.allVocabulary,
+            quizAttempts = uiState.quizAttempts,
+            onCompleteQuizSession = { mode, score, total ->
+                viewModel.recordQuizSession(mode, score, total)
+            }
+        )
+    }
+
+    if (showSpeakingModal) {
+        SpeakingPracticeModal(
+            isOm = isOm,
+            target = uiState.speakingTarget,
+            audioState = uiState.audioState,
+            aiComparisonState = uiState.aiComparisonState,
+            aiModelAudioState = uiState.aiModelAudioState,
+            onSelectTarget = { preset ->
+                viewModel.setSpeakingTarget(preset.targetOromo, preset.targetEnglish, preset.phoneticTip)
+            },
+            onPlayAiModel = {
+                viewModel.playAiModelPronunciation(
+                    targetOromo = uiState.speakingTarget.targetOromo,
+                    phoneticGuide = uiState.speakingTarget.phoneticTip
+                )
+            },
+            onSpeakFallback = ::handleSpeak,
+            onStartRecording = viewModel::startRecording,
+            onStopRecording = viewModel::stopRecording,
+            onPlayRecording = viewModel::playRecordedAudio,
+            onCompareWithAi = {
+                viewModel.comparePronunciationWithAi(
+                    targetOromo = uiState.speakingTarget.targetOromo,
+                    englishMeaning = uiState.speakingTarget.targetEnglish,
+                    phoneticTip = uiState.speakingTarget.phoneticTip
+                )
+            },
+            onDismiss = {
+                viewModel.stopSpeaking()
+                showSpeakingModal = false
+            }
+        )
+    }
+
+    if (showFlashcardsModal) {
+        FlashcardsModal(
+            isOm = isOm,
+            allVocabulary = uiState.allVocabulary,
+            allPhrases = uiState.allPhrases,
+            onSpeakText = ::handleSpeak,
+            onMarkCardMastered = { itemId, label ->
+                viewModel.awardPracticePoints("FLASHCARD", itemId, label, points = 8, uniquePerItem = true)
+            },
+            onDismiss = { showFlashcardsModal = false }
+        )
+    }
+
+    if (showListeningModal) {
+        ListeningPracticeModal(
+            isOm = isOm,
+            allVocabulary = uiState.allVocabulary,
+            onSpeakText = ::handleSpeak,
+            onCompletedSession = { score, total ->
+                viewModel.awardPracticePoints(
+                    source = "LISTENING",
+                    itemId = "listen_${System.currentTimeMillis()}",
+                    label = "Listening $score/$total",
+                    points = (score * 10) + 15,
+                    uniquePerItem = false
+                )
+            },
+            onDismiss = { showListeningModal = false }
+        )
+    }
+
+    if (showWritingModal) {
+        WritingPracticeModal(
+            isOm = isOm,
+            initialLetter = uiState.selectedLetter,
+            allVocabulary = uiState.allVocabulary,
+            onSpeakText = ::handleSpeak,
+            onPracticeCompleted = { itemId, label ->
+                viewModel.awardPracticePoints("WRITING", itemId, label, points = 10, uniquePerItem = true)
+            },
+            onDismiss = { showWritingModal = false }
+        )
+    }
+
+    if (showProgressModal) {
+        ProgressAchievementsModal(
+            uiState = uiState,
+            onDismiss = { showProgressModal = false }
+        )
+    }
+
+    if (showUnifiedSearchModal) {
+        UnifiedSearchModal(
+            uiState = uiState,
+            onQueryChange = viewModel::updateUnifiedSearch,
+            onSaveSearch = viewModel::saveSearchQuery,
+            onClearHistory = viewModel::clearSearchHistory,
+            onSpeakText = ::handleSpeak,
+            onSelectProverb = { proverbId ->
+                viewModel.selectProverbById(proverbId)
+                navigateTo(ROUTE_HOME)
+            },
+            onDismiss = { showUnifiedSearchModal = false }
         )
     }
 }

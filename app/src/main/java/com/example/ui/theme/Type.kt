@@ -21,79 +21,81 @@ val PlusJakartaSansFontFamily = FontFamily(
     Font(R.font.plus_jakarta_sans, FontWeight.Bold)
 )
 
-val QubeeTypography = Typography(
+fun scaledQubeeTypography(scale: Float = 1.0f): Typography = Typography(
     displaySmall = TextStyle(
         fontFamily = PlayfairDisplayFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 32.sp,
-        lineHeight = 40.sp,
+        fontSize = (32f * scale).sp,
+        lineHeight = (40f * scale).sp,
         letterSpacing = (-0.25).sp
     ),
     headlineMedium = TextStyle(
         fontFamily = PlayfairDisplayFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 26.sp,
-        lineHeight = 34.sp
+        fontSize = (26f * scale).sp,
+        lineHeight = (34f * scale).sp
     ),
     headlineSmall = TextStyle(
         fontFamily = PlayfairDisplayFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp
+        fontSize = (22f * scale).sp,
+        lineHeight = (28f * scale).sp
     ),
     titleLarge = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp
+        fontSize = (20f * scale).sp,
+        lineHeight = (26f * scale).sp
     ),
     titleMedium = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
+        fontSize = (16f * scale).sp,
+        lineHeight = (22f * scale).sp,
         letterSpacing = 0.1.sp
     ),
     titleSmall = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
+        fontSize = (14f * scale).sp,
+        lineHeight = (20f * scale).sp,
         letterSpacing = 0.1.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
+        fontSize = (16f * scale).sp,
+        lineHeight = (24f * scale).sp,
         letterSpacing = 0.25.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
+        fontSize = (14f * scale).sp,
+        lineHeight = (20f * scale).sp,
         letterSpacing = 0.2.sp
     ),
     labelLarge = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
+        fontSize = (14f * scale).sp,
+        lineHeight = (20f * scale).sp,
         letterSpacing = 0.1.sp
     ),
     labelMedium = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
+        fontSize = (12f * scale).sp,
+        lineHeight = (16f * scale).sp,
         letterSpacing = 0.4.sp
     ),
     labelSmall = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
+        fontSize = (11f * scale).sp,
+        lineHeight = (16f * scale).sp,
         letterSpacing = 0.4.sp
     )
 )
+
+val QubeeTypography = scaledQubeeTypography(1.0f)

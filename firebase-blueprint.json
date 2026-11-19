@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "UserCloudProfile": {
+      "title": "UserCloudProfile",
+      "description": "Cloud-synced learning progress, points, streaks, and unlocked achievements for an authenticated learner.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated Firebase UID matching the document ID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Learner display name from Google Sign-In profile."
+        },
+        "totalPoints": {
+          "type": "integer",
+          "description": "Cumulative User Points (XP) earned across modules."
+        },
+        "dailyGoalPoints": {
+          "type": "integer",
+          "description": "Target daily points goal configured by the learner."
+        },
+        "todayPoints": {
+          "type": "integer",
+          "description": "Points earned on lastActiveDate."
+        },
+        "currentStreak": {
+          "type": "integer",
+          "description": "Consecutive active learning days."
+        },
+        "bestStreak": {
+          "type": "integer",
+          "description": "Highest streak achieved."
+        },
+        "totalLearningSeconds": {
+          "type": "integer",
+          "description": "Cumulative active study time in seconds."
+        },
+        "quizTotalAnswered": {
+          "type": "integer",
+          "description": "Total quiz questions answered."
+        },
+        "quizTotalCorrect": {
+          "type": "integer",
+          "description": "Total quiz questions answered correctly."
+        },
+        "lastActiveDate": {
+          "type": "string",
+          "description": "ISO yyyy-MM-dd date of last learning activity."
+        },
+        "unlockedAchievementIds": {
+          "type": "array",
+          "description": "Bounded list of unlocked achievement IDs."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when cloud profile was created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when cloud profile was last updated (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "totalPoints",
+        "dailyGoalPoints",
+        "todayPoints",
+        "currentStreak",
+        "bestStreak",
+        "totalLearningSeconds",
+        "quizTotalAnswered",
+        "quizTotalCorrect",
+        "lastActiveDate",
+        "unlockedAchievementIds",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudFavorite": {
+      "title": "CloudFavorite",
+      "description": "A bookmarked proverb, phrase, or vocabulary word synced for an authenticated learner.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated Firebase UID owning this favorite."
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["PROVERB", "PHRASE", "VOCAB"],
+          "description": "Type of bookmarked educational item."
+        },
+        "itemId": {
+          "type": "string",
+          "description": "Identifier of the educational item."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when bookmarked (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "itemType",
+        "itemId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudQuizAttempt": {
+      "title": "CloudQuizAttempt",
+      "description": "Immutable summary of a completed quiz session synced to cloud history.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated Firebase UID."
+        },
+        "mode": {
+          "type": "string",
+          "description": "Quiz mode identifier."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Number of correct answers in the session."
+        },
+        "totalQuestions": {
+          "type": "integer",
+          "description": "Total number of questions in the session."
+        },
+        "pointsEarned": {
+          "type": "integer",
+          "description": "User Points awarded for the quiz session."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when completed (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "mode",
+        "score",
+        "totalQuestions",
+        "pointsEarned",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserCloudProfile" },
+      "description": "Per-user cloud learning progress profile."
+    },
+    "/users/{userId}/favorites/{favoriteId}": {
+      "schema": { "$ref": "#/entities/CloudFavorite" },
+      "description": "Per-user synced favorite bookmarks."
+    },
+    "/users/{userId}/quiz_attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/CloudQuizAttempt" },
+      "description": "Per-user synced quiz attempt history."
+    }
+  }
+}

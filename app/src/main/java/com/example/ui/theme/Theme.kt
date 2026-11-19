@@ -10,40 +10,40 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 
 private val QubeeLightColorScheme = lightColorScheme(
-    primary = EmeraldPrimary,
-    onPrimary = OnEmerald,
-    primaryContainer = EmeraldContainer,
-    onPrimaryContainer = OnEmeraldContainer,
+    primary = PrimaryGreen,
+    onPrimary = OnPrimaryGreen,
+    primaryContainer = MintGreen,
+    onPrimaryContainer = OnMintGreen,
     secondary = TerracottaSecondary,
     onSecondary = OnTerracotta,
-    secondaryContainer = TerracottaContainer,
-    onSecondaryContainer = OnTerracottaContainer,
-    tertiary = OchreTertiary,
-    onTertiary = OnOchre,
-    tertiaryContainer = OchreContainer,
-    onTertiaryContainer = OnOchreContainer,
-    background = IvoryBackground,
-    onBackground = EspressoOnBackground,
+    secondaryContainer = SoftPink,
+    onSecondaryContainer = OnSoftPink,
+    tertiary = GoldAccent,
+    onTertiary = OnGoldAccent,
+    tertiaryContainer = GoldContainer,
+    onTertiaryContainer = OnGoldContainer,
+    background = CreamBackground,
+    onBackground = DarkText,
     surface = WarmSurface,
-    onSurface = EspressoOnBackground,
+    onSurface = DarkText,
     surfaceVariant = SurfaceVariantLight,
     onSurfaceVariant = OnSurfaceVariantLight,
     outline = OutlineLight
 )
 
 private val QubeeDarkColorScheme = darkColorScheme(
-    primary = EmeraldPrimaryDark,
-    onPrimary = OnEmeraldDark,
-    primaryContainer = EmeraldContainerDark,
-    onPrimaryContainer = OnEmeraldContainerDark,
-    secondary = TerracottaSecondaryDark,
-    onSecondary = OnTerracottaDark,
-    secondaryContainer = TerracottaContainerDark,
-    onSecondaryContainer = OnTerracottaContainerDark,
-    tertiary = OchreTertiaryDark,
-    onTertiary = OnOchreDark,
-    tertiaryContainer = OchreContainerDark,
-    onTertiaryContainer = OnOchreContainerDark,
+    primary = PrimaryGreenDark,
+    onPrimary = OnPrimaryGreenDark,
+    primaryContainer = MintGreenDark,
+    onPrimaryContainer = OnMintGreenDark,
+    secondary = SecondaryPinkDark,
+    onSecondary = OnSecondaryPinkDark,
+    secondaryContainer = SoftPinkDark,
+    onSecondaryContainer = OnSoftPinkDark,
+    tertiary = GoldAccentDark,
+    onTertiary = OnGoldAccentDark,
+    tertiaryContainer = GoldContainerDark,
+    onTertiaryContainer = OnGoldContainerDark,
     background = NightBackground,
     onBackground = NightOnBackground,
     surface = NightSurface,
@@ -54,8 +54,8 @@ private val QubeeDarkColorScheme = darkColorScheme(
 )
 
 val QubeeShapes = Shapes(
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
     large = RoundedCornerShape(24.dp),
     extraLarge = RoundedCornerShape(28.dp)
 )
@@ -63,13 +63,15 @@ val QubeeShapes = Shapes(
 @Composable
 fun QubeeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    textScale: Float = 1.0f,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) QubeeDarkColorScheme else QubeeLightColorScheme
+    val typography = scaledQubeeTypography(textScale.coerceIn(0.85f, 1.35f))
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = QubeeTypography,
+        typography = typography,
         shapes = QubeeShapes,
         content = content
     )

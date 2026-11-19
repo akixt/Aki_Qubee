@@ -233,7 +233,7 @@ fun ProverbOfTheDayCard(
                     ) {
                         Column(
                             modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
                                 text = if (isOm) "Hiika" else "Meaning",
@@ -244,6 +244,12 @@ fun ProverbOfTheDayCard(
                                 text = if (isOm) item.meaningOm else item.meaningEn,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = item.practicalExample(isOm),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                modifier = Modifier.padding(top = 2.dp)
                             )
                         }
                     }

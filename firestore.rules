@@ -1,0 +1,153 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserCloudProfile(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 100 &&
+             data.totalPoints is int && data.totalPoints >= 0 && data.totalPoints <= 10000000 &&
+             data.dailyGoalPoints is int && data.dailyGoalPoints >= 10 && data.dailyGoalPoints <= 5000 &&
+             data.todayPoints is int && data.todayPoints >= 0 && data.todayPoints <= 100000 &&
+             data.currentStreak is int && data.currentStreak >= 0 && data.currentStreak <= 36500 &&
+             data.bestStreak is int && data.bestStreak >= 0 && data.bestStreak <= 36500 &&
+             data.totalLearningSeconds is int && data.totalLearningSeconds >= 0 && data.totalLearningSeconds <= 1000000000 &&
+             data.quizTotalAnswered is int && data.quizTotalAnswered >= 0 && data.quizTotalAnswered <= 1000000 &&
+             data.quizTotalCorrect is int && data.quizTotalCorrect >= 0 && data.quizTotalCorrect <= data.quizTotalAnswered &&
+             data.lastActiveDate is string && data.lastActiveDate.size() <= 20 &&
+             data.unlockedAchievementIds is list &&
+             data.unlockedAchievementIds.size() <= 30 &&
+             (data.unlockedAchievementIds.size() == 0 || data.unlockedAchievementIds[0] is string) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCloudFavorite(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.itemType in ['PROVERB', 'PHRASE', 'VOCAB'] &&
+             data.itemId is string &&
+             data.itemId.size() >= 1 &&
+             data.itemId.size() <= 64 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCloudQuizAttempt(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.mode is string &&
+             data.mode.size() >= 1 &&
+             data.mode.size() <= 40 &&
+             data.score is int && data.score >= 0 && data.score <= 200 &&
+             data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 200 &&
+             data.score <= data.totalQuestions &&
+             data.pointsEarned is int && data.pointsEarned >= 0 && data.pointsEarned <= 5000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'displayName', 'totalPoints', 'dailyGoalPoints', 'todayPoints',
+                         'currentStreak', 'bestStreak', 'totalLearningSeconds',
+                         'quizTotalAnswered', 'quizTotalCorrect', 'lastActiveDate',
+                         'unlockedAchievementIds', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'displayName', 'totalPoints', 'dailyGoalPoints', 'todayPoints',
+                         'currentStreak', 'bestStreak', 'totalLearningSeconds',
+                         'quizTotalAnswered', 'quizTotalCorrect', 'lastActiveDate',
+                         'unlockedAchievementIds', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidUserCloudProfile(incoming());
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserCloudProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'displayName', 'totalPoints', 'dailyGoalPoints', 'todayPoints',
+                         'currentStreak', 'bestStreak', 'totalLearningSeconds',
+                         'quizTotalAnswered', 'quizTotalCorrect', 'lastActiveDate',
+                         'unlockedAchievementIds', 'updatedAt'
+                       ]);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /favorites/{favoriteId} {
+        allow get: if isOwner(userId) && isValidId(favoriteId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(favoriteId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['userId', 'itemType', 'itemId', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'itemType', 'itemId', 'createdAt', 'updatedAt']) &&
+                         isValidCloudFavorite(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(favoriteId) &&
+                         isValidCloudFavorite(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['itemType', 'itemId', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(favoriteId);
+      }
+
+      match /quiz_attempts/{attemptId} {
+        allow get: if isOwner(userId) && isValidId(attemptId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(attemptId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['userId', 'mode', 'score', 'totalQuestions', 'pointsEarned', 'createdAt']) &&
+                         incoming().keys().hasOnly(['userId', 'mode', 'score', 'totalQuestions', 'pointsEarned', 'createdAt']) &&
+                         isValidCloudQuizAttempt(incoming());
+
+        allow update: if false;
+
+        allow delete: if isOwner(userId) && isValidId(attemptId);
+      }
+    }
+  }
+}

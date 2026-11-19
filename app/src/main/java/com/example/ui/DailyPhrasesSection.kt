@@ -254,10 +254,15 @@ fun DailyPhrasesHomeSection(
 fun phraseCategoryLabel(category: PhraseCategory, isOm: Boolean): String {
     return when (category) {
         PhraseCategory.GREETINGS -> if (isOm) "Nagaa" else "Greetings"
-        PhraseCategory.ESSENTIALS -> if (isOm) "Barbaachisoo" else "Essentials"
-        PhraseCategory.TRAVEL -> if (isOm) "Imala" else "Travel"
-        PhraseCategory.MARKET -> if (isOm) "Gabaa" else "Market"
-        PhraseCategory.FOOD -> if (isOm) "Nyaata fi Buna" else "Food & Coffee"
+        PhraseCategory.INTRODUCTIONS -> if (isOm) "Walbarsiisuu" else "Introductions"
         PhraseCategory.FAMILY -> if (isOm) "Maatii fi Mana" else "Family & Home"
+        PhraseCategory.EDUCATION -> if (isOm) "Barnoota" else "Education"
+        PhraseCategory.MARKET -> if (isOm) "Gabaa fi Bittaa" else "Shopping & Market"
+        PhraseCategory.TRANSPORTATION -> if (isOm) "Geejjiba" else "Transportation"
+        PhraseCategory.FOOD -> if (isOm) "Nyaata, Dhugaatii fi Buna" else "Food, Drinks & Coffee"
+        PhraseCategory.DAILY_ACTIVITIES -> if (isOm) "Hojii Guyyaa" else "Daily Activities"
+        PhraseCategory.WORKPLACE -> if (isOm) "Bakka Hojii" else "Workplace"
+        PhraseCategory.TRAVEL -> if (isOm) "Imala" else "Travel"
+        PhraseCategory.ESSENTIALS -> if (isOm) "Fayyaa fi Barbaachisoo" else "Health & Essentials"
     }
 }

@@ -1,5 +1,8 @@
 package com.example.data
 
+import android.content.Context
+import org.json.JSONArray
+
 enum class QubeeCategory {
     VOWEL,
     CONSONANT,
@@ -21,11 +24,16 @@ data class QubeeLetter(
 
 enum class PhraseCategory {
     GREETINGS,
-    ESSENTIALS,
-    TRAVEL,
+    INTRODUCTIONS,
+    FAMILY,
+    EDUCATION,
     MARKET,
+    TRANSPORTATION,
     FOOD,
-    FAMILY
+    DAILY_ACTIVITIES,
+    WORKPLACE,
+    TRAVEL,
+    ESSENTIALS
 }
 
 data class PhraseItem(
@@ -34,6 +42,29 @@ data class PhraseItem(
     val oromo: String,
     val english: String,
     val pronunciationTip: String
+)
+
+enum class VocabularyCategory {
+    QUBEE_CORE,
+    NUMBERS_TIME,
+    FAMILY_PEOPLE,
+    FOOD_DRINK,
+    NATURE_ANIMALS,
+    BODY_HEALTH,
+    EDUCATION_TECH,
+    ACTIONS_VERBS,
+    ADJECTIVES_CULTURE
+}
+
+data class VocabularyItem(
+    val id: String,
+    val oromo: String,
+    val english: String,
+    val category: VocabularyCategory,
+    val partOfSpeech: String,
+    val pronunciation: String,
+    val exampleOm: String,
+    val exampleEn: String
 )
 
 enum class ProverbCategory {
@@ -54,20 +85,63 @@ data class ProverbItem(
     val meaningOm: String,
     val meaningEn: String,
     val category: ProverbCategory = ProverbCategory.WISDOM
-)
+) {
+    fun practicalExample(isOm: Boolean): String = when (category) {
+        ProverbCategory.WISDOM -> if (isOm) {
+            "Fakkeenya: Marii barnootaa ykn murtoo murteessaa keessatti yaada qulqulluu fi bilchaataa dhiyeessuuf tajaajila."
+        } else {
+            "Practical use: Helpful in study discussions or life decisions when valuing thoughtful judgment over haste."
+        }
+        ProverbCategory.UNITY -> if (isOm) {
+            "Fakkeenya: Pirojektii garee, hojii hawaasummaa fi wal-gargaarsa maatii keessatti tokkummaa jajjabeessuuf fayyada."
+        } else {
+            "Practical use: Encourages teamwork in school projects, family responsibilities, and community goals."
+        }
+        ProverbCategory.PATIENCE -> if (isOm) {
+            "Fakkeenya: Afaan haaraa barachuu ykn galma dheeraa irratti osoo hin nuffin obsaan itti fufuuf yaadachiisa."
+        } else {
+            "Practical use: A reminder to stay steady when learning Afaan Oromoo or working toward long-term goals."
+        }
+        ProverbCategory.TRUTH -> if (isOm) {
+            "Fakkeenya: Haasawa guyyaa guyyaa fi hojii keessatti amanamummaa fi iftoomina eeguuf gargaara."
+        } else {
+            "Practical use: Guides honest communication and accountability in friendships, school, and business."
+        }
+        ProverbCategory.WORK -> if (isOm) {
+            "Fakkeenya: Hojii idilee, qo'annoo fi carraaqqii guyyaa guyyaatti onnachiisuuf dubbatama."
+        } else {
+            "Practical use: Motivates daily study, craftsmanship, and consistent effort toward harvestable results."
+        }
+        ProverbCategory.NATURE -> if (isOm) {
+            "Fakkeenya: Haala yeroo fi naannoo hubachuun jireenya ofii qopheessuu ibsuuf tajaajila."
+        } else {
+            "Practical use: Draws lessons from seasons, water, and the land to plan wisely in everyday life."
+        }
+        ProverbCategory.COMMUNITY -> if (isOm) {
+            "Fakkeenya: Kabaja ollaa, keessummaa simachuu fi hariiroo hawaasaa cimsuu keessatti fayyada."
+        } else {
+            "Practical use: Reflects respect for neighbors, hospitality, and lifelong social bonds."
+        }
+        ProverbCategory.CHARACTER -> if (isOm) {
+            "Fakkeenya: Amala gaarii, kabaja fi itti gaafatamummaa dhuunfaa guddisuuf dubbatama."
+        } else {
+            "Practical use: Highlights personal integrity, humility, and steady good conduct."
+        }
+    }
+}
 
 object OromoContent {
 
     @Volatile
     private var cachedProverbs: List<ProverbItem>? = null
 
-    fun loadProverbs(context: android.content.Context): List<ProverbItem> {
+    fun loadProverbs(context: Context): List<ProverbItem> {
         cachedProverbs?.let { return it }
         return synchronized(this) {
             cachedProverbs?.let { return it }
             val loaded = runCatching {
                 val jsonText = context.assets.open("mammaaksa.json").bufferedReader().use { it.readText() }
-                val array = org.json.JSONArray(jsonText)
+                val array = JSONArray(jsonText)
                 buildList(array.length()) {
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
@@ -95,35 +169,94 @@ object OromoContent {
     @Volatile
     private var cachedPhrases: List<PhraseItem>? = null
 
-    fun loadPhrases(context: android.content.Context): List<PhraseItem> {
+    fun loadPhrases(context: Context): List<PhraseItem> {
         cachedPhrases?.let { return it }
         return synchronized(this) {
             cachedPhrases?.let { return it }
-            val loaded = runCatching {
-                val jsonText = context.assets.open("haasawa.json").bufferedReader().use { it.readText() }
-                val array = org.json.JSONArray(jsonText)
-                buildList(array.length()) {
+            val assetFiles = listOf("haasawa.json", "haasawa_extended.json")
+            val combined = LinkedHashMap<String, PhraseItem>()
+            assetFiles.forEach { fileName ->
+                runCatching {
+                    val jsonText = context.assets.open(fileName).bufferedReader().use { it.readText() }
+                    val array = JSONArray(jsonText)
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
-                        val category = runCatching {
-                            PhraseCategory.valueOf(obj.optString("category", "GREETINGS"))
-                        }.getOrDefault(PhraseCategory.GREETINGS)
-                        add(
-                            PhraseItem(
-                                id = obj.getString("id"),
+                        val id = obj.getString("id")
+                        if (!combined.containsKey(id)) {
+                            val category = runCatching {
+                                PhraseCategory.valueOf(obj.optString("category", "GREETINGS"))
+                            }.getOrDefault(PhraseCategory.GREETINGS)
+                            combined[id] = PhraseItem(
+                                id = id,
                                 category = category,
                                 oromo = obj.getString("oromo"),
                                 english = obj.getString("english"),
                                 pronunciationTip = obj.optString("pronunciationTip", "")
                             )
-                        )
+                        }
                     }
                 }
-            }.getOrNull()?.takeIf { it.isNotEmpty() } ?: phrases
+            }
+            val loaded = if (combined.isNotEmpty()) combined.values.toList() else phrases
             cachedPhrases = loaded
             loaded
         }
     }
+
+    @Volatile
+    private var cachedVocabulary: List<VocabularyItem>? = null
+
+    fun loadVocabulary(context: Context): List<VocabularyItem> {
+        cachedVocabulary?.let { return it }
+        return synchronized(this) {
+            cachedVocabulary?.let { return it }
+            val assetFiles = listOf("vocab_core.json", "vocab_life.json", "vocab_study.json")
+            val combined = LinkedHashMap<String, VocabularyItem>()
+            assetFiles.forEach { fileName ->
+                runCatching {
+                    val jsonText = context.assets.open(fileName).bufferedReader().use { it.readText() }
+                    val array = JSONArray(jsonText)
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val id = obj.getString("id")
+                        if (!combined.containsKey(id)) {
+                            val category = runCatching {
+                                VocabularyCategory.valueOf(obj.optString("category", "QUBEE_CORE"))
+                            }.getOrDefault(VocabularyCategory.QUBEE_CORE)
+                            combined[id] = VocabularyItem(
+                                id = id,
+                                oromo = obj.getString("oromo"),
+                                english = obj.getString("english"),
+                                category = category,
+                                partOfSpeech = obj.optString("pos", "Noun"),
+                                pronunciation = obj.optString("pronunciation", ""),
+                                exampleOm = obj.optString("exampleOm", ""),
+                                exampleEn = obj.optString("exampleEn", "")
+                            )
+                        }
+                    }
+                }
+            }
+            val loaded = if (combined.isNotEmpty()) combined.values.toList() else vocabularySeed
+            cachedVocabulary = loaded
+            loaded
+        }
+    }
+
+    val vocabularySeed: List<VocabularyItem> = listOf(
+        VocabularyItem("vc001", "Nagaa", "Peace / Well-being", VocabularyCategory.QUBEE_CORE, "Noun", "nah-gaa", "Nagaan nuuf haa baay'atu.", "May peace abound for us."),
+        VocabularyItem("vc002", "Galata", "Thanks / Gratitude", VocabularyCategory.QUBEE_CORE, "Noun", "gah-lah-tah", "Galata guddaa qabda.", "You have great gratitude."),
+        VocabularyItem("vc003", "Qubee", "Letter / Alphabet", VocabularyCategory.QUBEE_CORE, "Noun", "qoo-bee", "Qubee Afaan Oromoo 33 qaba.", "The Afaan Oromoo alphabet has 33 letters."),
+        VocabularyItem("vc004", "Buna", "Coffee", VocabularyCategory.FOOD_DRINK, "Noun", "boo-nah", "Bunni Oromiyaa mi'aawaadha.", "Oromia coffee is delicious."),
+        VocabularyItem("vc005", "Bishaan", "Water", VocabularyCategory.FOOD_DRINK, "Noun", "bee-shaan", "Bishaan qulqulluu dhugi.", "Drink clean water."),
+        VocabularyItem("vc006", "Mana", "House / Home", VocabularyCategory.FAMILY_PEOPLE, "Noun", "mah-nah", "Manni keenya bal'aadha.", "Our house is spacious."),
+        VocabularyItem("vc007", "Barumsa", "Education / Study", VocabularyCategory.EDUCATION_TECH, "Noun", "bah-room-sah", "Barumsi ifa jireenyaati.", "Education is the light of life."),
+        VocabularyItem("vc008", "Kitaaba", "Book", VocabularyCategory.EDUCATION_TECH, "Noun", "kee-taa-bah", "Kitaaba haaraa dubbisaa jira.", "I am reading a new book."),
+        VocabularyItem("vc009", "Gaara", "Mountain", VocabularyCategory.NATURE_ANIMALS, "Noun", "gaa-rah", "Gaarri kun baay'ee dheeraadha.", "This mountain is very tall."),
+        VocabularyItem("vc010", "Jaalala", "Love / Affection", VocabularyCategory.ADJECTIVES_CULTURE, "Noun", "jaa-lah-lah", "Jaalalli maatii cimaadha.", "Family love is strong."),
+        VocabularyItem("vc011", "Dubbachuu", "To speak", VocabularyCategory.ACTIONS_VERBS, "Verb", "doob-bah-choo", "Afaan Oromoo dubbachuu jaalladha.", "I love speaking Afaan Oromoo."),
+        VocabularyItem("vc012", "Tokko", "One", VocabularyCategory.NUMBERS_TIME, "Number", "tohk-koh", "Kitaaba tokko naaf kenni.", "Give me one book.")
+    )
 
     val proverbs: List<ProverbItem> = listOf(
         ProverbItem(

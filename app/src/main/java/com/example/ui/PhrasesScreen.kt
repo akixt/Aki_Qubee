@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Card
@@ -51,7 +52,8 @@ fun PhrasesScreen(
     onToggleFavoritePhrase: (String) -> Unit,
     onCopyPhrase: (String) -> Unit,
     onSpeakPhrase: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPracticeSpeaking: ((com.example.data.PhraseItem) -> Unit)? = null
 ) {
     val isOm = uiState.language == AppLanguage.OROMO
 
@@ -244,6 +246,17 @@ fun PhrasesScreen(
                                             imageVector = Icons.Filled.ContentCopy,
                                             contentDescription = if (isOm) "Garagalchi" else "Copy phrase"
                                         )
+                                    }
+                                    if (onPracticeSpeaking != null) {
+                                        FilledTonalIconButton(
+                                            onClick = { onPracticeSpeaking(phrase) },
+                                            modifier = Modifier.testTag("practice_phrase_${phrase.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Mic,
+                                                contentDescription = if (isOm) "Shaakali" else "Practice speaking"
+                                            )
+                                        }
                                     }
                                 }
                             }

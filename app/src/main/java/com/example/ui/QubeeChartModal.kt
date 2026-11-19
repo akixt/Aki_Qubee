@@ -56,7 +56,8 @@ fun QubeeChartModal(
     isOm: Boolean,
     onLetterClick: (QubeeLetter) -> Unit,
     onReplaySound: (QubeeLetter) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPracticeSpeaking: ((QubeeLetter) -> Unit)? = null
 ) {
     val vowels = OromoContent.qubeeLetters.filter { it.category == QubeeCategory.VOWEL }
     val consonants = OromoContent.qubeeLetters.filter { it.category == QubeeCategory.CONSONANT }
@@ -126,12 +127,12 @@ fun QubeeChartModal(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Surface(
                             color = MaterialTheme.colorScheme.primary,
                             shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.size(56.dp)
+                            modifier = Modifier.size(54.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
@@ -161,6 +162,17 @@ fun QubeeChartModal(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+
+                        if (onPracticeSpeaking != null) {
+                            FilledTonalButton(
+                                onClick = { onPracticeSpeaking(selectedLetter) },
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .testTag("chart_speak_compare_button")
+                            ) {
+                                Text(if (isOm) "Shaakali" else "Speak")
+                            }
                         }
 
                         FilledTonalButton(

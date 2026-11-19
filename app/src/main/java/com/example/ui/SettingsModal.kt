@@ -1,5 +1,11 @@
 package com.example.ui
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -21,19 +27,27 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.WorkOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,23 +55,32 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import com.example.BuildConfig
 import com.example.R
 import com.example.data.AppLanguage
@@ -93,10 +116,44 @@ fun SettingsModal(
     onSelectTtsSpeed: (Float) -> Unit,
     onClearFavorites: () -> Unit,
     onOpenQuiz: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSelectTextScale: (Float) -> Unit = {},
+    onSelectRepeatCount: (Int) -> Unit = {},
+    onSelectDailyGoal: (Int) -> Unit = {},
+    onToggleReminders: (Boolean) -> Unit = {},
+    onSignInGoogle: (Context) -> Unit = {},
+    onSyncCloud: () -> Unit = {},
+    onSignOutCloud: () -> Unit = {},
+    onResetAllData: () -> Unit = {}
 ) {
     val isOm = uiState.language == AppLanguage.OROMO
-    val totalSaved = uiState.favoriteProverbIds.size + uiState.favoritePhraseIds.size
+    val context = LocalContext.current
+    val totalSaved = uiState.favoriteProverbIds.size + uiState.favoritePhraseIds.size + uiState.favoriteVocabIds.size
+    var showResetConfirm by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onToggleReminders(granted)
+    }
+
+    fun handleRemindersChanged(enabled: Boolean) {
+        if (!enabled) {
+            onToggleReminders(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) onToggleReminders(true) else notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            onToggleReminders(true)
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -130,10 +187,7 @@ fun SettingsModal(
                                 .minimumInteractiveComponentSize()
                                 .testTag("close_settings_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = if (isOm) "Cufi" else "Close settings"
-                            )
+                            Icon(Icons.Filled.Close, contentDescription = if (isOm) "Cufi" else "Close settings")
                         }
                     }
                 )
@@ -149,9 +203,7 @@ fun SettingsModal(
             ) {
                 // Language Setting
                 item {
-                    SettingsSectionCard(
-                        title = if (isOm) "Afaan Appichaa" else "App Language"
-                    ) {
+                    SettingsSectionCard(title = if (isOm) "Afaan Appichaa" else "App Language") {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -172,11 +224,9 @@ fun SettingsModal(
                     }
                 }
 
-                // Theme Appearance Setting
+                // Theme Appearance & Text Size Accessibility
                 item {
-                    SettingsSectionCard(
-                        title = if (isOm) "Bifa Fuulaa (Theme)" else "Appearance"
-                    ) {
+                    SettingsSectionCard(title = if (isOm) "Bifa & Guddina Barreeffamaa" else "Appearance & Text Size") {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -197,14 +247,23 @@ fun SettingsModal(
                                 label = { Text(if (isOm) "Dukkana" else "Dark") }
                             )
                         }
+                        Text(
+                            text = if (isOm) "Guddina Qubee: ${(uiState.textScale * 100).toInt()}%" else "Reading Text Scale: ${(uiState.textScale * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Slider(
+                            value = uiState.textScale,
+                            onValueChange = onSelectTextScale,
+                            valueRange = 0.85f..1.30f,
+                            steps = 8,
+                            modifier = Modifier.testTag("text_scale_slider")
+                        )
                     }
                 }
 
-                // Speech Pronunciation Speed
+                // Speech Speed & Repeat Controls
                 item {
-                    SettingsSectionCard(
-                        title = if (isOm) "Saffisa Sagalee (TTS)" else "Pronunciation Speed (TTS)"
-                    ) {
+                    SettingsSectionCard(title = if (isOm) "Saffisa fi Irra-Deebii Sagalee" else "Audio Speed & Repeat") {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -213,9 +272,7 @@ fun SettingsModal(
                                 imageVector = Icons.Filled.Speed,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .align(Alignment.CenterVertically)
+                                modifier = Modifier.size(18.dp).align(Alignment.CenterVertically)
                             )
                             FilterChip(
                                 selected = uiState.ttsSpeed <= 0.75f,
@@ -236,28 +293,142 @@ fun SettingsModal(
                                 modifier = Modifier.testTag("tts_speed_fast")
                             )
                         }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(1, 2, 3).forEach { repeat ->
+                                FilterChip(
+                                    selected = uiState.audioState.repeatCount == repeat,
+                                    onClick = { onSelectRepeatCount(repeat) },
+                                    label = { Text(if (isOm) "Irra deebii ${repeat}x" else "Repeat ${repeat}x") }
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Daily Quiz & Bookmarks Management
+                // Daily Goal & Reminders
                 item {
-                    SettingsSectionCard(
-                        title = if (isOm) "Qormaata Guyyaa & Kuusaa" else "Daily Quiz & Library"
-                    ) {
+                    SettingsSectionCard(title = if (isOm) "Galma Guyyaa & Yaadachiisa" else "Daily Goal & Reminders") {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(30, 50, 100, 150).forEach { goal ->
+                                FilterChip(
+                                    selected = uiState.dailyGoalPoints == goal,
+                                    onClick = { onSelectDailyGoal(goal) },
+                                    label = { Text("$goal XP") }
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Filled.NotificationsActive, null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text(
+                                        text = if (isOm) "Yaadachiisa Guyyaa (7:00 PM)" else "Daily Study Reminder (7:00 PM)",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = if (isOm) "Walitti fufiinsa kee eeguuf" else "Keep your daily learning streak alive",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = uiState.remindersEnabled,
+                                onCheckedChange = ::handleRemindersChanged,
+                                modifier = Modifier.testTag("reminders_switch")
+                            )
+                        }
+                    }
+                }
+
+                // Optional Cloud Backup (Google Sign-In + Firestore)
+                item {
+                    SettingsSectionCard(title = if (isOm) "Kuusaa Duumessaa (Cloud Backup)" else "Optional Cloud Backup (Google)") {
+                        val cloud = uiState.cloudSyncState
+                        if (!cloud.isSignedIn) {
+                            Text(
+                                text = if (isOm) {
+                                    "Filannoo: Google'n seenii qabxii fi filatamoo kee duumessarratti olkaa'i."
+                                } else {
+                                    "Optional: Sign in with Google to sync your XP, streaks, and favorites across devices."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { onSignInGoogle(context) },
+                                enabled = !cloud.isSyncing,
+                                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("google_signin_button")
+                            ) {
+                                if (cloud.isSyncing) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(if (isOm) "Google'n Seeni" else "Sign in with Google")
+                            }
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Filled.CloudDone, null, tint = MaterialTheme.colorScheme.primary)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(cloud.displayName ?: "Aki Learner", style = MaterialTheme.typography.titleSmall)
+                                    Text(cloud.email ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilledTonalButton(
+                                    onClick = onSyncCloud,
+                                    enabled = !cloud.isSyncing,
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Icon(Icons.Filled.Sync, null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (isOm) "Amma Sync Godhi" else "Sync Now")
+                                }
+                                OutlinedButton(
+                                    onClick = onSignOutCloud,
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Text(if (isOm) "Ba'i" else "Sign Out")
+                                }
+                            }
+                        }
+                        cloud.statusMessage?.let { msg ->
+                            Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                // Daily Quiz, Bookmarks & Reset Management
+                item {
+                    SettingsSectionCard(title = if (isOm) "Qormaata Guyyaa & Kuusaa" else "Quiz, Library & Data") {
                         Text(
                             text = if (isOm) {
-                                "Mammaaksa ${uiState.allProverbs.size} • Haasawa ${uiState.allPhrases.size} • Qubee ${OromoContent.qubeeLetters.size} • Filatamoo $totalSaved"
+                                "Mammaaksa ${uiState.allProverbs.size} • Haasawa ${uiState.allPhrases.size} • Jechoota ${uiState.allVocabulary.size} • Qubee ${OromoContent.qubeeLetters.size}"
                             } else {
-                                "${uiState.allProverbs.size} Proverbs • ${uiState.allPhrases.size} Phrases • ${OromoContent.qubeeLetters.size} Qubee • $totalSaved Saved"
+                                "${uiState.allProverbs.size} Proverbs • ${uiState.allPhrases.size} Phrases • ${uiState.allVocabulary.size} Vocab • ${OromoContent.qubeeLetters.size} Qubee"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = if (isOm) {
-                                "Milkaa'ina Qormaataa: ${uiState.quizProgress.accuracyPercent}% (${uiState.quizProgress.totalCorrect}/${uiState.quizProgress.totalAnswered}) • Rikoordii: ${uiState.quizProgress.bestStreak}"
+                                "XP: ${uiState.userProgress.totalPoints} • Qormaata: ${uiState.quizProgress.accuracyPercent}% (${uiState.quizProgress.totalCorrect}/${uiState.quizProgress.totalAnswered})"
                             } else {
-                                "Quiz Progress: ${uiState.quizProgress.accuracyPercent}% (${uiState.quizProgress.totalCorrect}/${uiState.quizProgress.totalAnswered}) • Best streak: ${uiState.quizProgress.bestStreak}"
+                                "User Points: ${uiState.userProgress.totalPoints} XP • Quiz: ${uiState.quizProgress.accuracyPercent}% (${uiState.quizProgress.totalCorrect}/${uiState.quizProgress.totalAnswered})"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary
@@ -273,11 +444,7 @@ fun SettingsModal(
                                 .height(48.dp)
                                 .testTag("settings_open_quiz_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Quiz,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.Filled.Quiz, null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(if (isOm) "Qormaata Guyyaa Eegali" else "Open Daily Quiz")
                         }
@@ -289,13 +456,27 @@ fun SettingsModal(
                                     .height(48.dp)
                                     .testTag("clear_favorites_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.DeleteOutline,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Filled.DeleteOutline, null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(if (isOm) "Filatamoo Hunda Haqi ($totalSaved)" else "Clear All Favorites ($totalSaved)")
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { showResetConfirm = true },
+                            modifier = Modifier.fillMaxWidth().height(48.dp).testTag("reset_progress_button")
+                        ) {
+                            Text(if (isOm) "Odeeffannoo Barumsaa Haqi (Reset)" else "Reset Learning Progress")
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { showAboutDialog = true }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Filled.Info, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (isOm) "Waa'ee Appii" else "About Aki Qubee")
+                            }
+                            TextButton(onClick = { showPrivacyDialog = true }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Filled.PrivacyTip, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (isOm) "Iccitii" else "Privacy Policy")
                             }
                         }
                     }
@@ -314,9 +495,7 @@ fun SettingsModal(
                             .testTag("developer_info_card")
                     ) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(18.dp),
+                            modifier = Modifier.fillMaxWidth().padding(18.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Row(
@@ -327,9 +506,7 @@ fun SettingsModal(
                                     painter = painterResource(id = R.drawable.aki_logo),
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .clip(CircleShape)
+                                    modifier = Modifier.size(52.dp).clip(CircleShape)
                                 )
                                 Column {
                                     Text(
@@ -338,7 +515,7 @@ fun SettingsModal(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
-                                        text = "Aki Qubee • v${BuildConfig.VERSION_NAME}",
+                                        text = "Aki Qubee • Powered by AKI TECH • v${BuildConfig.VERSION_NAME}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -434,6 +611,72 @@ fun SettingsModal(
             }
         }
     }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text(if (isOm) "Odeeffannoo Hunda Haquu?" else "Reset Learning Progress?") },
+            text = {
+                Text(
+                    if (isOm) {
+                        "Kuni XP, walitti fufiinsa guyyaa, seenaa qormaataa fi filatamoo meeshaa kanarra jiran hunda haqa."
+                    } else {
+                        "This clears local User Points, streaks, quiz history, and bookmarks on this device."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onResetAllData()
+                        showResetConfirm = false
+                    }
+                ) {
+                    Text(if (isOm) "Haqi" else "Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text(if (isOm) "Dhiisi" else "Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("Aki Qubee • AKI TECH") },
+            text = {
+                Text(
+                    "\"Learn Afaan Oromoo. Speak with Confidence.\"\n\n" +
+                        "Aki Qubee is an offline-first bilingual Afaan Oromoo & English learning platform with 33 Qubee letters, " +
+                        "1,270+ vocabulary words, 1,310+ daily conversations, 1,200+ Mammaaksa proverbs, 8-mode quizzes, " +
+                        "and AI pronunciation feedback."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) { Text("OK") }
+            }
+        )
+    }
+
+    if (showPrivacyDialog) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyDialog = false },
+            title = { Text(if (isOm) "Iccitii Fayyadamaa" else "Privacy Policy") },
+            text = {
+                Text(
+                    "• Vocabulary, proverbs, phrases, points, and quiz history are stored locally on your device.\n" +
+                        "• Voice recordings are used strictly on your request to replay locally or send to Firebase AI Logic for pronunciation coaching.\n" +
+                        "• Cloud Backup via Google Sign-In is completely optional and only syncs when signed in."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showPrivacyDialog = false }) { Text("OK") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -443,24 +686,10 @@ private fun DeveloperDetailRow(
     value: String,
     valueTag: String? = null
 ) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .padding(top = 2.dp)
-                .size(20.dp)
-        )
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp).size(20.dp))
         Column {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
@@ -484,16 +713,10 @@ private fun SettingsSectionCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
             content()
         }
     }
