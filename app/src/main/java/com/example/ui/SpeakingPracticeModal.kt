@@ -332,6 +332,40 @@ fun SpeakingPracticeModal(
                             )
                         }
 
+                        if (audioState.isRecording) {
+                            Surface(
+                                color = QuizIncorrectRed.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = if (isOm) {
+                                        "● Sagalee waraabaa jira... Yeroo dubbattee xumurtu 'Waraabii Dhaabi' tuqi."
+                                    } else {
+                                        "● Recording voice... Speak clearly, then tap 'Stop Recording'."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = QuizIncorrectRed,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        } else if (audioState.hasRecordedAudio) {
+                            Surface(
+                                color = QuizCorrectGreen.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = if (isOm) {
+                                        "✓ Sagaleen waraabameera! Dhaga'i yookiin AI'n madaali."
+                                    } else {
+                                        "✓ Voice clip recorded! Replay it or tap 'Compare AI'."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = QuizCorrectGreen,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+
                         if (permissionDenied) {
                             Text(
                                 text = if (isOm) {

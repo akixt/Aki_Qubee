@@ -1,9 +1,12 @@
 package com.example.audio
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
+import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -12,13 +15,19 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class AudioPlaybackState(
     val isTtsReady: Boolean = false,
@@ -41,7 +50,18 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
     private var mediaPlayer: MediaPlayer? = null
     private var aiAudioTrack: AudioTrack? = null
 
-    private val recordedFile: File = File(appContext.cacheDir, "aki_qubee_pronunciation.m4a")
+    private val recordedM4aFile: File = File(appContext.cacheDir, "aki_qubee_pronunciation.m4a")
+    private val recordedWavFile: File = File(appContext.cacheDir, "aki_qubee_pronunciation.wav")
+    private var activeRecordedFile: File = recordedM4aFile
+    private var activeRecordedMimeType: String = "audio/mp4"
+    private var recordingStartedAtMs: Long = 0L
+
+    // AudioRecord PCM fallback for emulators / devices where MediaRecorder AAC fails
+    private var pcmAudioRecord: AudioRecord? = null
+    private val isPcmCaptureActive = AtomicBoolean(false)
+    private var pcmCaptureThread: Thread? = null
+    private val pcmBufferLock = Any()
+    private var pcmOutputStream: ByteArrayOutputStream? = null
 
     private val _state = MutableStateFlow(AudioPlaybackState())
     val state: StateFlow<AudioPlaybackState> = _state.asStateFlow()
@@ -116,83 +136,261 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
 
     fun startRecording(): Boolean {
         stopAllPlayback()
+        cleanupActiveRecorder()
+
+        if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            _state.value = _state.value.copy(
+                isRecording = false,
+                errorMessage = "Microphone permission is required to record voice."
+            )
+            return false
+        }
+
+        if (recordedM4aFile.exists()) recordedM4aFile.delete()
+        if (recordedWavFile.exists()) recordedWavFile.delete()
+
+        // Prefer AudioRecord 16kHz PCM WAV or MediaRecorder 16kHz/44.1kHz AAC:
+        // On Android emulators, MediaRecorder AAC at 24kHz frequently fails prepare/start.
+        val startedMediaRecorder = tryStartMediaRecorder(
+            audioSource = MediaRecorder.AudioSource.MIC,
+            sampleRate = 16_000
+        ) || tryStartMediaRecorder(
+            audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            sampleRate = 44_100
+        )
+
+        if (startedMediaRecorder) {
+            activeRecordedFile = recordedM4aFile
+            activeRecordedMimeType = "audio/mp4"
+            recordingStartedAtMs = System.currentTimeMillis()
+            _state.value = _state.value.copy(
+                isRecording = true,
+                hasRecordedAudio = false,
+                errorMessage = null
+            )
+            return true
+        }
+
+        // Universal fallback: raw AudioRecord PCM -> WAV (works on virtually all emulators)
+        val startedPcmFallback = tryStartPcmRecorder()
+        if (startedPcmFallback) {
+            activeRecordedFile = recordedWavFile
+            activeRecordedMimeType = "audio/wav"
+            recordingStartedAtMs = System.currentTimeMillis()
+            _state.value = _state.value.copy(
+                isRecording = true,
+                hasRecordedAudio = false,
+                errorMessage = null
+            )
+            return true
+        }
+
+        _state.value = _state.value.copy(
+            isRecording = false,
+            hasRecordedAudio = false,
+            errorMessage = "Microphone could not start on this device/emulator. Enable virtual microphone audio input in emulator settings."
+        )
+        return false
+    }
+
+    private fun tryStartMediaRecorder(audioSource: Int, sampleRate: Int): Boolean {
+        var mediaRecorder: MediaRecorder? = null
         return try {
-            if (recordedFile.exists()) recordedFile.delete()
-            val mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (recordedM4aFile.exists()) recordedM4aFile.delete()
+            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 MediaRecorder(appContext)
             } else {
                 @Suppress("DEPRECATION")
                 MediaRecorder()
             }
             mediaRecorder.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setAudioSource(audioSource)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setAudioEncodingBitRate(96_000)
-                setAudioSamplingRate(24_000)
-                setOutputFile(recordedFile.absolutePath)
+                setAudioChannels(1)
+                setAudioSamplingRate(sampleRate)
+                setAudioEncodingBitRate(64_000)
+                setOutputFile(recordedM4aFile.absolutePath)
                 prepare()
                 start()
             }
             recorder = mediaRecorder
-            _state.value = _state.value.copy(
-                isRecording = true,
-                hasRecordedAudio = false,
-                errorMessage = null
-            )
             true
         } catch (e: Exception) {
-            Log.e("AudioLearningManager", "Failed to start recording", e)
-            runCatching { recorder?.release() }
+            Log.w(TAG, "MediaRecorder($audioSource, ${sampleRate}Hz) failed: ${e.message}")
+            runCatching { mediaRecorder?.reset() }
+            runCatching { mediaRecorder?.release() }
             recorder = null
-            _state.value = _state.value.copy(
-                isRecording = false,
-                errorMessage = e.localizedMessage ?: "Unable to access microphone."
-            )
             false
         }
     }
 
-    fun stopRecording(): File? {
-        return try {
-            recorder?.apply {
-                stop()
-                release()
+    @SuppressLint("MissingPermission")
+    private fun tryStartPcmRecorder(): Boolean {
+        val sampleRate = PCM_SAMPLE_RATE_HZ
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuf <= 0) return false
+        val bufferSize = maxOf(minBuf * 2, 4096)
+
+        val sources = listOf(
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.DEFAULT
+        )
+
+        for (source in sources) {
+            var candidate: AudioRecord? = null
+            try {
+                candidate = AudioRecord(
+                    source,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+                if (candidate.state != AudioRecord.STATE_INITIALIZED) {
+                    candidate.release()
+                    continue
+                }
+                candidate.startRecording()
+                if (candidate.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    candidate.release()
+                    continue
+                }
+
+                pcmAudioRecord = candidate
+                synchronized(pcmBufferLock) {
+                    pcmOutputStream = ByteArrayOutputStream(32_768)
+                }
+                isPcmCaptureActive.set(true)
+                pcmCaptureThread = Thread({
+                    val chunk = ByteArray(bufferSize)
+                    while (isPcmCaptureActive.get()) {
+                        val read = candidate.read(chunk, 0, chunk.size)
+                        if (read > 0) {
+                            synchronized(pcmBufferLock) {
+                                pcmOutputStream?.write(chunk, 0, read)
+                            }
+                        }
+                    }
+                }, "AkiQubeePcmCapture").apply { start() }
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "AudioRecord fallback($source) failed: ${e.message}")
+                runCatching { candidate?.release() }
             }
+        }
+        return false
+    }
+
+    fun stopRecording(): File? {
+        if (isPcmCaptureActive.get() || pcmAudioRecord != null) {
+            return stopPcmRecording()
+        }
+        val activeRecorder = recorder ?: return null
+        return try {
+            val elapsedMs = System.currentTimeMillis() - recordingStartedAtMs
+            activeRecorder.stop()
+            activeRecorder.release()
             recorder = null
-            val valid = recordedFile.exists() && recordedFile.length() > 0L
+            val valid = recordedM4aFile.exists() && recordedM4aFile.length() > 128L && elapsedMs >= 250L
             _state.value = _state.value.copy(
                 isRecording = false,
-                hasRecordedAudio = valid
+                hasRecordedAudio = valid,
+                errorMessage = if (valid) null else "Waraabiin gabaabbateera — yoo xiqqaate sekondii 1 dubbadhu. / Recording was too short."
             )
-            if (valid) recordedFile else null
+            if (valid) recordedM4aFile else null
         } catch (e: Exception) {
-            Log.w("AudioLearningManager", "Error stopping recording", e)
-            runCatching { recorder?.release() }
+            Log.w(TAG, "Error stopping MediaRecorder", e)
+            runCatching { activeRecorder.reset() }
+            runCatching { activeRecorder.release() }
             recorder = null
+            if (recordedM4aFile.exists()) recordedM4aFile.delete()
             _state.value = _state.value.copy(
                 isRecording = false,
                 hasRecordedAudio = false,
-                errorMessage = "Recording was too short. Please hold or speak for a moment."
+                errorMessage = "Waraabiin gabaabbateera — yoo xiqqaate sekondii 1 dubbadhu. / Recording was too short."
+            )
+            null
+        }
+    }
+
+    private fun stopPcmRecording(): File? {
+        isPcmCaptureActive.set(false)
+        runCatching { pcmAudioRecord?.stop() }
+        runCatching { pcmCaptureThread?.join(500L) }
+        runCatching { pcmAudioRecord?.release() }
+        pcmAudioRecord = null
+        pcmCaptureThread = null
+
+        val pcmBytes = synchronized(pcmBufferLock) {
+            val data = pcmOutputStream?.toByteArray() ?: ByteArray(0)
+            pcmOutputStream = null
+            data
+        }
+
+        if (pcmBytes.size < 1600) {
+            if (recordedWavFile.exists()) recordedWavFile.delete()
+            _state.value = _state.value.copy(
+                isRecording = false,
+                hasRecordedAudio = false,
+                errorMessage = "No microphone sound detected or recording too short. Hold and speak clearly."
+            )
+            return null
+        }
+
+        return try {
+            val wavBytes = buildWavFileBytes(pcmBytes, sampleRateHz = PCM_SAMPLE_RATE_HZ)
+            FileOutputStream(recordedWavFile).use { out ->
+                out.write(wavBytes)
+            }
+            activeRecordedFile = recordedWavFile
+            activeRecordedMimeType = "audio/wav"
+            _state.value = _state.value.copy(
+                isRecording = false,
+                hasRecordedAudio = true,
+                errorMessage = null
+            )
+            recordedWavFile
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write WAV recording", e)
+            _state.value = _state.value.copy(
+                isRecording = false,
+                hasRecordedAudio = false,
+                errorMessage = "Could not save recorded audio."
             )
             null
         }
     }
 
     suspend fun readRecordedAudioBytes(): ByteArray? = withContext(Dispatchers.IO) {
-        if (recordedFile.exists() && recordedFile.length() > 0L) {
-            recordedFile.readBytes()
+        if (activeRecordedFile.exists() && activeRecordedFile.length() > 0L) {
+            activeRecordedFile.readBytes()
+        } else {
+            null
+        }
+    }
+
+    suspend fun readRecordedAudioWithMime(): Pair<ByteArray, String>? = withContext(Dispatchers.IO) {
+        if (activeRecordedFile.exists() && activeRecordedFile.length() > 0L) {
+            activeRecordedFile.readBytes() to activeRecordedMimeType
         } else {
             null
         }
     }
 
     fun playRecordedAudio() {
-        if (!recordedFile.exists() || recordedFile.length() == 0L) return
+        if (!activeRecordedFile.exists() || activeRecordedFile.length() == 0L) return
         stopAllPlayback()
         try {
             val player = MediaPlayer().apply {
-                setDataSource(recordedFile.absolutePath)
+                setDataSource(activeRecordedFile.absolutePath)
                 setOnCompletionListener {
                     _state.value = _state.value.copy(isPlayingRecording = false)
                 }
@@ -220,14 +418,15 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
         if (pcmBytes.isEmpty()) return
         stopAllPlayback()
         withContext(Dispatchers.IO) {
+            var track: AudioTrack? = null
             try {
                 val sampleRate = (24_000 * speed.coerceIn(0.7f, 1.3f)).toInt()
                 val minBuffer = AudioTrack.getMinBufferSize(
                     sampleRate,
                     AudioFormat.CHANNEL_OUT_MONO,
                     AudioFormat.ENCODING_PCM_16BIT
-                ).coerceAtLeast(pcmBytes.size)
-                val track = AudioTrack.Builder()
+                ).coerceAtLeast(4096)
+                track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -245,11 +444,20 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
                     .setBufferSizeInBytes(maxOf(minBuffer, pcmBytes.size))
                     .build()
 
+                if (track.state != AudioTrack.STATE_INITIALIZED) {
+                    track.release()
+                    _state.value = _state.value.copy(
+                        isPlayingAiModel = false,
+                        errorMessage = "Audio output device could not initialize."
+                    )
+                    return@withContext
+                }
+
                 aiAudioTrack = track
                 _state.value = _state.value.copy(isPlayingAiModel = true, errorMessage = null)
                 track.write(pcmBytes, 0, pcmBytes.size)
                 track.play()
-                val durationMs = ((pcmBytes.size / 2.0) / sampleRate * 1000.0).toLong() + 150L
+                val durationMs = ((pcmBytes.size / 2.0) / sampleRate * 1000.0).toLong() + 180L
                 kotlinx.coroutines.delay(durationMs)
                 runCatching {
                     track.stop()
@@ -258,7 +466,9 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
                 aiAudioTrack = null
                 _state.value = _state.value.copy(isPlayingAiModel = false)
             } catch (e: Exception) {
-                Log.w("AudioLearningManager", "AudioTrack playback failed", e)
+                Log.w(TAG, "AudioTrack playback failed", e)
+                runCatching { track?.release() }
+                aiAudioTrack = null
                 _state.value = _state.value.copy(
                     isPlayingAiModel = false,
                     errorMessage = "Audio playback failed."
@@ -269,7 +479,8 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
 
     fun clearRecording() {
         stopAllPlayback()
-        if (recordedFile.exists()) recordedFile.delete()
+        if (recordedM4aFile.exists()) recordedM4aFile.delete()
+        if (recordedWavFile.exists()) recordedWavFile.delete()
         _state.value = _state.value.copy(hasRecordedAudio = false, errorMessage = null)
     }
 
@@ -291,11 +502,58 @@ class AudioLearningManager(context: Context) : TextToSpeech.OnInitListener {
         )
     }
 
-    fun release() {
-        stopAllPlayback()
+    private fun cleanupActiveRecorder() {
+        isPcmCaptureActive.set(false)
+        runCatching { pcmAudioRecord?.stop() }
+        runCatching { pcmCaptureThread?.join(200L) }
+        runCatching { pcmAudioRecord?.release() }
+        pcmAudioRecord = null
+        pcmCaptureThread = null
+        runCatching { recorder?.stop() }
+        runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
         recorder = null
+    }
+
+    fun release() {
+        stopAllPlayback()
+        cleanupActiveRecorder()
         runCatching { tts?.shutdown() }
         tts = null
+    }
+
+    companion object {
+        private const val TAG = "AudioLearningManager"
+        const val PCM_SAMPLE_RATE_HZ = 16_000
+
+        fun buildWavFileBytes(pcmData: ByteArray, sampleRateHz: Int = PCM_SAMPLE_RATE_HZ): ByteArray {
+            val channels = 1
+            val bitsPerSample = 16
+            val byteRate = sampleRateHz * channels * bitsPerSample / 8
+            val blockAlign = channels * bitsPerSample / 8
+            val totalAudioLen = pcmData.size
+            val totalDataLen = totalAudioLen + 36
+
+            val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
+                put("RIFF".toByteArray(Charsets.US_ASCII))
+                putInt(totalDataLen)
+                put("WAVE".toByteArray(Charsets.US_ASCII))
+                put("fmt ".toByteArray(Charsets.US_ASCII))
+                putInt(16) // Subchunk1Size for PCM
+                putShort(1.toShort()) // AudioFormat = 1 (PCM)
+                putShort(channels.toShort())
+                putInt(sampleRateHz)
+                putInt(byteRate)
+                putShort(blockAlign.toShort())
+                putShort(bitsPerSample.toShort())
+                put("data".toByteArray(Charsets.US_ASCII))
+                putInt(totalAudioLen)
+            }.array()
+
+            return ByteArray(header.size + pcmData.size).also { out ->
+                System.arraycopy(header, 0, out, 0, header.size)
+                System.arraycopy(pcmData, 0, out, header.size, pcmData.size)
+            }
+        }
     }
 }

@@ -13,6 +13,7 @@ import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 
@@ -102,10 +103,13 @@ class PronunciationAiRepository {
             audioPart.inlineData
         }
         Result.success(pcmBytes)
+    } catch (e: TimeoutCancellationException) {
+        Log.e(TAG, "AI TTS generation timed out", e)
+        Result.failure(Exception("AI pronunciation model timed out. Check your internet connection and try again.", e))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Log.w(TAG, "AI TTS generation failed: ${e.message}", e)
+        Log.e(TAG, "AI TTS generation failed: ${e.message}", e)
         Result.failure(e)
     }
 
@@ -144,10 +148,13 @@ class PronunciationAiRepository {
             parseFeedbackJson(rawJson, phoneticTip)
         }
         Result.success(result)
+    } catch (e: TimeoutCancellationException) {
+        Log.e(TAG, "AI pronunciation comparison timed out", e)
+        Result.failure(Exception("AI pronunciation analysis timed out. Please check your connection and try again.", e))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Log.w(TAG, "AI pronunciation comparison failed: ${e.message}", e)
+        Log.e(TAG, "AI pronunciation comparison failed: ${e.message}", e)
         Result.failure(e)
     }
 

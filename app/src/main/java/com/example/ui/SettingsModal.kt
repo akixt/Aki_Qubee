@@ -357,8 +357,33 @@ fun SettingsModal(
 
                 // Optional Cloud Backup (Google Sign-In + Firestore)
                 item {
-                    SettingsSectionCard(title = if (isOm) "Kuusaa Duumessaa (Cloud Backup)" else "Optional Cloud Backup (Google)") {
+                    SettingsSectionCard(title = if (isOm) "Kuusaa Duumessaa (Firebase Cloud)" else "Firebase & Cloud Backup (Google)") {
                         val cloud = uiState.cloudSyncState
+                        Surface(
+                            color = if (cloud.isFirebaseReady) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                            } else {
+                                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("firebase_connection_badge")
+                        ) {
+                            Text(
+                                text = if (cloud.isFirebaseReady) {
+                                    val pid = cloud.firebaseProjectId?.let { " ($it)" } ?: ""
+                                    if (isOm) "Firebase walqabateera • Firestore & AI Qophii$pid" else "Firebase Connected • Firestore & AI Logic Ready$pid"
+                                } else {
+                                    if (isOm) "Firebase yeroo ammaa hin argamne" else "Firebase offline/uninitialized in this runtime"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (cloud.isFirebaseReady) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                },
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                         if (!cloud.isSignedIn) {
                             Text(
                                 text = if (isOm) {

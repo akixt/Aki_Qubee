@@ -55,6 +55,8 @@ data class SpeakingTarget(
 )
 
 data class CloudSyncUiState(
+    val isFirebaseReady: Boolean = false,
+    val firebaseProjectId: String? = null,
     val isSignedIn: Boolean = false,
     val displayName: String? = null,
     val email: String? = null,
@@ -249,23 +251,32 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
     private val audioManager: AudioLearningManager? = runCatching {
         AudioLearningManager(application.applicationContext)
     }.getOrNull()
-    private val pronunciationAiRepo: PronunciationAiRepository? = runCatching {
-        if (FirebaseApp.getApps(application.applicationContext).isNotEmpty()) {
-            PronunciationAiRepository()
-        } else {
-            null
-        }
-    }.getOrNull()
-    private val cloudSyncRepo: CloudSyncRepository? = runCatching {
-        if (FirebaseApp.getApps(application.applicationContext).isNotEmpty()) {
-            CloudSyncRepository(application.applicationContext)
-        } else {
-            null
-        }
-    }.getOrNull()
+    private val isFirebaseAvailable: Boolean = ensureFirebaseInitialized(application.applicationContext)
+
+    private val pronunciationAiRepo: PronunciationAiRepository? = if (isFirebaseAvailable) {
+        runCatching { PronunciationAiRepository() }.getOrNull()
+    } else {
+        null
+    }
+    private val cloudSyncRepo: CloudSyncRepository? = if (isFirebaseAvailable) {
+        runCatching { CloudSyncRepository(application.applicationContext) }.getOrNull()
+    } else {
+        null
+    }
 
     private val localState = MutableStateFlow(LocalFilterState())
-    private val liveAiCloudState = MutableStateFlow(LiveAiCloudState())
+    private val liveAiCloudState = MutableStateFlow(
+        LiveAiCloudState(
+            cloudSyncState = CloudSyncUiState(
+                isFirebaseReady = isFirebaseAvailable,
+                firebaseProjectId = if (isFirebaseAvailable) {
+                    runCatching { FirebaseApp.getInstance().options.projectId }.getOrNull()
+                } else {
+                    null
+                }
+            )
+        )
+    )
     private var cloudListenerJob: Job? = null
     private var autoSyncJob: Job? = null
 
@@ -908,8 +919,8 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            val bytes = manager.readRecordedAudioBytes()
-            if (bytes == null || bytes.isEmpty()) {
+            val audioWithMime = manager.readRecordedAudioWithMime()
+            if (audioWithMime == null || audioWithMime.first.isEmpty()) {
                 liveAiCloudState.value = liveAiCloudState.value.copy(
                     aiComparisonState = AiModelState.Error("Record your voice first before comparing with AI.")
                 )
@@ -917,7 +928,8 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
             }
             liveAiCloudState.value = liveAiCloudState.value.copy(aiComparisonState = AiModelState.Loading)
             val res = repo.comparePronunciation(
-                audioBytes = bytes,
+                audioBytes = audioWithMime.first,
+                mimeType = audioWithMime.second,
                 targetOromo = targetOromo,
                 englishMeaning = englishMeaning,
                 phoneticTip = phoneticTip
@@ -1014,7 +1026,8 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
                 stateAfterMerge.favoriteVocabIds.forEach { syncRepo.syncFavorite("VOCAB", it, true) }
 
                 liveAiCloudState.value = liveAiCloudState.value.copy(
-                    cloudSyncState = CloudSyncUiState(
+                    cloudSyncState = liveAiCloudState.value.cloudSyncState.copy(
+                        isFirebaseReady = true,
                         isSignedIn = true,
                         displayName = user.displayName,
                         email = user.email,
@@ -1077,12 +1090,24 @@ class QubeeViewModel(application: Application) : AndroidViewModel(application) {
             syncRepo.signOut(getApplication())
             prefsRepo.setCloudSyncEnabled(false)
             liveAiCloudState.value = liveAiCloudState.value.copy(
-                cloudSyncState = CloudSyncUiState(
+                cloudSyncState = liveAiCloudState.value.cloudSyncState.copy(
                     isSignedIn = false,
+                    displayName = null,
+                    email = null,
+                    isSyncing = false,
                     statusMessage = "Signed out of cloud backup."
                 )
             )
         }
+    }
+
+    private fun ensureFirebaseInitialized(context: Context): Boolean {
+        if (FirebaseApp.getApps(context).isNotEmpty()) return true
+        val googleAppIdRes = context.resources.getIdentifier("google_app_id", "string", context.packageName)
+        if (googleAppIdRes == 0) return false
+        return runCatching {
+            FirebaseApp.initializeApp(context) != null || FirebaseApp.getApps(context).isNotEmpty()
+        }.getOrDefault(false)
     }
 
     fun resetAllLearningData() {

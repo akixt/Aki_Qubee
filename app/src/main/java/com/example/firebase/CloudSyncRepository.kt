@@ -203,10 +203,13 @@ class CloudSyncRepository(
     } catch (e: GetCredentialCancellationException) {
         Log.w(TAG, "Google Sign-In cancelled by user or credential configuration.", e)
         Result.failure(Exception("Sign-in was cancelled. Select a Google account to continue.", e))
+    } catch (e: NoCredentialException) {
+        Log.w(TAG, "No Google credential available on emulator/device.", e)
+        Result.failure(Exception("No Google account found on this emulator. Add a Google account in Android Settings -> Accounts, then try again.", e))
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Log.w(TAG, "Google Sign-In failed: ${e.message}", e)
+        Log.e(TAG, "Google Sign-In failed: ${e.message}", e)
         Result.failure(e)
     }
 
